@@ -1,0 +1,51 @@
+﻿<Window x:Class="Sideclip.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sideclip debug"
+        Height="460"
+        Width="720"
+        MinHeight="280"
+        MinWidth="560"
+        Topmost="True"
+        WindowStartupLocation="Manual"
+        Background="#1E1E1E"
+        Foreground="#E6E6E6"
+        FontFamily="Segoe UI"
+        Closing="OnClosing">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Padding="12,10" Background="#252526">
+            <StackPanel>
+                <TextBlock FontSize="16" FontWeight="SemiBold" Text="Sideclip" />
+                <TextBlock x:Name="StatusText"
+                           Margin="0,6,0,0"
+                           FontSize="12"
+                           Foreground="#B0B0B0"
+                           TextWrapping="Wrap"
+                           Text="Listening. Ctrl+Win+Shift+V picker. Ctrl+Win+Shift+P types latest screenshot path. Win+V untouched." />
+            </StackPanel>
+        </Border>
+        <Border DockPanel.Dock="Bottom" Padding="12,8" Background="#252526">
+            <TextBlock x:Name="HintText"
+                       FontSize="11"
+                       Foreground="#8A8A8A"
+                       TextWrapping="Wrap"
+                       Text="Secrets expire in TTL seconds and never appear in the picker. Non-secrets persist under %LocalAppData%\Sideclip. Tray owns the process." />
+        </Border>
+        <ListView x:Name="HistoryList"
+                  Margin="0"
+                  BorderThickness="0"
+                  Background="#1E1E1E"
+                  Foreground="#E6E6E6">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Age" Width="70" DisplayMemberBinding="{Binding Age}" />
+                    <GridViewColumn Header="Secret" Width="70" DisplayMemberBinding="{Binding Secret}" />
+                    <GridViewColumn Header="Preview" Width="360" DisplayMemberBinding="{Binding Preview}" />
+                    <GridViewColumn Header="Owner" Width="180" DisplayMemberBinding="{Binding Owner}" />
+                </GridView>
+            </ListView.View>
+        </ListView>
+    </DockPanel>
+</Window>
+
+
