@@ -10,6 +10,7 @@ internal sealed class TrayService : IDisposable
     private readonly AppSettings _settings;
     private readonly Action<AppSettings> _onSettingsChanged;
     private readonly ToolStripMenuItem _openPickerItem;
+    private readonly ToolStripMenuItem _ttlMenu;
 
     public event Action? OpenPicker;
     public event Action? ToggleDebug;
@@ -49,22 +50,19 @@ internal sealed class TrayService : IDisposable
         };
         menu.Items.Add(auto);
 
-        var ttl = new ToolStripMenuItem($"Secret TTL: {settings.TtlSeconds}s");
+        _ttlMenu = new ToolStripMenuItem(TtlLabel());
+        var off = new ToolStripMenuItem("Off") { Tag = 0 };
+        off.Click += (_, _) => ApplyTtl(enabled: false, seconds: _settings.TtlSeconds);
+        _ttlMenu.DropDownItems.Add(off);
         foreach (var sec in new[] { 8, 12, 20, 30 })
         {
             var s = sec;
-            var item = new ToolStripMenuItem($"{s} seconds") { Checked = settings.TtlSeconds == s };
-            item.Click += (_, _) =>
-            {
-                _settings.TtlSeconds = s;
-                ttl.Text = $"Secret TTL: {s}s";
-                foreach (ToolStripMenuItem x in ttl.DropDownItems)
-                    x.Checked = x.Text.StartsWith(s.ToString(), StringComparison.Ordinal);
-                _onSettingsChanged(_settings);
-            };
-            ttl.DropDownItems.Add(item);
+            var item = new ToolStripMenuItem(s + " seconds") { Tag = s };
+            item.Click += (_, _) => ApplyTtl(enabled: true, seconds: s);
+            _ttlMenu.DropDownItems.Add(item);
         }
-        menu.Items.Add(ttl);
+        RefreshTtlChecks();
+        menu.Items.Add(_ttlMenu);
 
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitApp?.Invoke());
@@ -84,6 +82,30 @@ internal sealed class TrayService : IDisposable
     {
         _openPickerItem.Text = OpenLabel();
     }
+
+    private void ApplyTtl(bool enabled, int seconds)
+    {
+        _settings.TtlEnabled = enabled;
+        _settings.TtlSeconds = seconds;
+        _ttlMenu.Text = TtlLabel();
+        RefreshTtlChecks();
+        _onSettingsChanged(_settings);
+    }
+
+    private void RefreshTtlChecks()
+    {
+        foreach (ToolStripMenuItem x in _ttlMenu.DropDownItems)
+        {
+            if (x.Tag is not int tag)
+                continue;
+            x.Checked = _settings.TtlEnabled ? tag == _settings.TtlSeconds : tag == 0;
+        }
+    }
+
+    private string TtlLabel() =>
+        _settings.TtlEnabled
+            ? "Secret TTL: " + _settings.TtlSeconds + "s"
+            : "Secret TTL: Off";
 
     private string OpenLabel() =>
         string.IsNullOrWhiteSpace(_settings.PickerHotkey)
@@ -109,7 +131,3 @@ internal sealed class TrayService : IDisposable
         _icon.Dispose();
     }
 }
-
-
-
-

@@ -10,7 +10,8 @@ namespace Sideclip.History;
 /// <summary>
 /// In-memory history. Secrets are never persisted. TTL wipes one secret row
 /// and optionally clears the live clipboard if that row is still latest.
-/// Picker sees only non-secrets.
+/// Picker sees only non-secrets. TTL Off leaves secrets in memory until
+/// expiry is turned back on.
 /// </summary>
 public sealed class ClipHistoryStore : IDisposable
 {
@@ -22,26 +23,59 @@ public sealed class ClipHistoryStore : IDisposable
     private readonly List<ClipEntry> _entries = new();
     private readonly List<DispatcherTimer> _timers = new();
     private TimeSpan _ttl;
+    private bool _ttlEnabled;
 
     public ObservableCollection<ClipEntryView> Rows { get; } = new();
 
     public TimeSpan Ttl => _ttl;
+    public bool TtlEnabled => _ttlEnabled;
 
     public ClipEntry? Latest { get; private set; }
 
-    public ClipHistoryStore(Dispatcher dispatcher, Action<ClipEntry> onSecretExpired, TimeSpan? ttl = null)
+    public ClipHistoryStore(
+        Dispatcher dispatcher,
+        Action<ClipEntry> onSecretExpired,
+        TimeSpan? ttl = null,
+        bool ttlEnabled = true)
     {
         _dispatcher = dispatcher;
         _ttl = ttl ?? TimeSpan.FromSeconds(DefaultTtlSeconds);
+        _ttlEnabled = ttlEnabled;
         _onSecretExpired = onSecretExpired;
         LoadNonSecrets();
     }
 
-    public void SetTtl(TimeSpan ttl)
+    public void SetTtl(TimeSpan ttl, bool enabled)
     {
         if (ttl.TotalSeconds < 3)
             ttl = TimeSpan.FromSeconds(3);
         _ttl = ttl;
+
+        var turningOn = enabled && !_ttlEnabled;
+        _ttlEnabled = enabled;
+
+        if (!enabled)
+        {
+            foreach (var timer in _timers)
+                timer.Stop();
+            _timers.Clear();
+            foreach (var e in _entries)
+            {
+                if (e.IsSecret)
+                    e.ClearSecretFlag();
+            }
+            PersistNonSecrets();
+            return;
+        }
+
+        if (turningOn)
+        {
+            foreach (var e in _entries)
+            {
+                if (e.IsSecret)
+                    StartSecretTimer(e);
+            }
+        }
     }
 
     public IEnumerable<ClipEntry> PickerEntries()
@@ -65,12 +99,17 @@ public sealed class ClipHistoryStore : IDisposable
             : entry.IsImage
                 ? ImageCaption(entry)
                 : ClipEntry.MakeNonSecretPreview(text);
-        Rows.Insert(0, new ClipEntryView(entry, () => _ttl, preview));
+        Rows.Insert(0, new ClipEntryView(entry, () => _ttl, () => _ttlEnabled, preview));
 
         if (isSecret)
-            StartSecretTimer(entry);
+        {
+            if (_ttlEnabled)
+                StartSecretTimer(entry);
+        }
         else
+        {
             PersistNonSecrets();
+        }
 
         return entry;
     }
@@ -129,6 +168,9 @@ public sealed class ClipHistoryStore : IDisposable
 
     private void StartSecretTimer(ClipEntry entry)
     {
+        if (!_ttlEnabled)
+            return;
+
         var timer = new DispatcherTimer(DispatcherPriority.Normal, _dispatcher)
         {
             Interval = _ttl
@@ -261,7 +303,7 @@ public sealed class ClipHistoryStore : IDisposable
                 var entry = new ClipEntry(text, isSecret: false, rec.Owner ?? "unknown", png);
                 _entries.Add(entry);
                 var preview = entry.IsImage ? ImageCaption(entry) : ClipEntry.MakeNonSecretPreview(text);
-                Rows.Add(new ClipEntryView(entry, () => _ttl, preview));
+                Rows.Add(new ClipEntryView(entry, () => _ttl, () => _ttlEnabled, preview));
             }
 
             Latest = _entries.Count > 0 ? _entries[0] : null;
@@ -288,14 +330,16 @@ public sealed class ClipHistoryStore : IDisposable
 public sealed class ClipEntryView : INotifyPropertyChanged
 {
     private readonly Func<TimeSpan> _ttl;
+    private readonly Func<bool> _ttlEnabled;
     private readonly string _nonSecretPreview;
 
     public ClipEntry Entry { get; }
 
-    public ClipEntryView(ClipEntry entry, Func<TimeSpan> ttl, string nonSecretPreview)
+    public ClipEntryView(ClipEntry entry, Func<TimeSpan> ttl, Func<bool> ttlEnabled, string nonSecretPreview)
     {
         Entry = entry;
         _ttl = ttl;
+        _ttlEnabled = ttlEnabled;
         _nonSecretPreview = nonSecretPreview;
     }
 
@@ -319,6 +363,9 @@ public sealed class ClipEntryView : INotifyPropertyChanged
             if (!Entry.IsSecret)
                 return _nonSecretPreview;
 
+            if (!_ttlEnabled())
+                return "secret";
+
             var remain = Math.Max(0, (int)(_ttl() - (DateTime.UtcNow - Entry.CopiedAt)).TotalSeconds);
             return remain > 0 ? $"secret ({remain}s)" : "...";
         }
@@ -332,5 +379,3 @@ public sealed class ClipEntryView : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Preview)));
     }
 }
-
-

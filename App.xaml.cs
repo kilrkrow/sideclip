@@ -28,7 +28,7 @@ public partial class App : System.Windows.Application
         SettingsManager.ApplyAutostart(_settings.Autostart);
 
         _watcher = new ClipboardWatcher();
-        _history = new ClipHistoryStore(Dispatcher, OnSecretExpired, TimeSpan.FromSeconds(_settings.TtlSeconds));
+        _history = new ClipHistoryStore(Dispatcher, OnSecretExpired, TimeSpan.FromSeconds(_settings.TtlSeconds), _settings.TtlEnabled);
 
         _watcher.ClipCaptured += OnClipCaptured;
         _watcher.ImageCaptured += OnImageCaptured;
@@ -60,7 +60,7 @@ public partial class App : System.Windows.Application
     private void OnSettingsChanged(AppSettings settings)
     {
         SettingsManager.Save(settings);
-        _history?.SetTtl(TimeSpan.FromSeconds(settings.TtlSeconds));
+        _history?.SetTtl(TimeSpan.FromSeconds(settings.TtlSeconds), settings.TtlEnabled);
         _hotkeys?.Apply(settings.PickerHotkey, settings.ScreenshotHotkey);
         _tray?.RefreshHotkeyLabel();
         ApplyDebugVisibility();
@@ -94,6 +94,8 @@ public partial class App : System.Windows.Application
 
     private void OnClipCaptured(string text, bool isSecret, string owner)
     {
+        if (!_settings.TtlEnabled)
+            isSecret = false;
         _history?.Add(text, isSecret, owner);
         _debug?.NoteCapture(isSecret, owner);
     }

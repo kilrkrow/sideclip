@@ -29,7 +29,9 @@ internal static class SettingsManager
                 var s = JsonSerializer.Deserialize<AppSettings>(json, JsonOpts);
                 if (s is not null)
                 {
-                    if (s.TtlSeconds < 3) s.TtlSeconds = 3;
+                    if (json.IndexOf("TtlEnabled", StringComparison.OrdinalIgnoreCase) < 0)
+                        s.TtlEnabled = true;
+                    if (s.TtlSeconds < 3) s.TtlSeconds = 12;
                     if (s.TtlSeconds > 300) s.TtlSeconds = 300;
                     return s;
                 }
@@ -74,4 +76,3 @@ internal static class SettingsManager
         }
     }
 }
-

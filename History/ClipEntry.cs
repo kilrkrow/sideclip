@@ -9,7 +9,12 @@ namespace Sideclip.History;
 public sealed class ClipEntry
 {
     public DateTime CopiedAt { get; }
-    public bool IsSecret { get; }
+    public bool IsSecret { get; private set; }
+
+    public void ClearSecretFlag()
+    {
+        IsSecret = false;
+    }
     public string OwnerExe { get; }
     public byte[]? ImagePng { get; }
     public bool IsImage => ImagePng is { Length: > 0 };
