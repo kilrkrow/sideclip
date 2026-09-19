@@ -14,10 +14,6 @@ in verifying that this package's contents are trustworthy.
 
 3. Compare to the value used in tools\chocolateyinstall.ps1:
 
-   ZIP: REPLACE_ME
-
-   REPLACE_ME is intentional until the v0.1.0 zip exists. After publishing
-   the GitHub Release zip, replace REPLACE_ME here and in chocolateyinstall.ps1
-   with the real SHA256 (uppercase hex, no spaces).
+   ZIP: 7F1E5597FA317C71EA2EFB6EAEB3EA7213548067E38C0464EDA7BDAAD13157A8
 
 The package does not embed the binaries; it downloads them from GitHub Releases at install time.

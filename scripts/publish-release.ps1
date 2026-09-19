@@ -8,8 +8,8 @@
 
   Output: artifacts\Sideclip-win-x64-v<Version>.zip
 
-  After this script, create the GitHub Release and replace REPLACE_ME checksums
-  in pack/chocolatey/sideclip/tools/ (see pack/chocolatey/README.md).
+  After this script, create the GitHub Release (if needed) and put the printed
+  SHA256 into pack/chocolatey/sideclip/tools/ (see pack/chocolatey/README.md).
 
 .PARAMETER Version
   Semver without a leading v. Defaults to 0.1.0 (must match Sideclip.csproj / nuspec).
@@ -79,7 +79,7 @@ Write-Host "ZIP     $zipPath"
 Write-Host "SIZE    $sizeMb MB"
 Write-Host "SHA256  $hash"
 Write-Host ""
-Write-Host "Paste this SHA256 over every REPLACE_ME in:"
+Write-Host "Put this SHA256 in:"
 Write-Host "  pack/chocolatey/sideclip/tools/chocolateyinstall.ps1"
 Write-Host "  pack/chocolatey/sideclip/tools/VERIFICATION.txt"
 Write-Host ""

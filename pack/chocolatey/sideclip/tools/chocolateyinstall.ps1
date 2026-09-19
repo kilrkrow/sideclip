@@ -9,9 +9,8 @@ $zipPath = Join-Path $toolsDir $zipName
 $appOut = Join-Path $toolsDir 'app'
 
 # SHA256 of Sideclip-win-x64-v0.1.0.zip from the official GitHub Release.
-# REPLACE_ME after Guy builds the zip on Windows (VENGEANCE) and hashes it.
-# Get-FileHash .\Sideclip-win-x64-v0.1.0.zip -Algorithm SHA256
-$checksum = 'REPLACE_ME'
+# https://github.com/kilrkrow/sideclip/releases/download/v0.1.0/Sideclip-win-x64-v0.1.0.zip
+$checksum = '7F1E5597FA317C71EA2EFB6EAEB3EA7213548067E38C0464EDA7BDAAD13157A8'
 
 Get-ChocolateyWebFile -PackageName $packageName -FileFullPath $zipPath -Url $zipUrl `
   -Checksum $checksum -ChecksumType 'sha256'

@@ -2,7 +2,10 @@
 
 Installs Sideclip from the official GitHub Release ZIP.
 
-Checksums in `sideclip/tools/chocolateyinstall.ps1` and `sideclip/tools/VERIFICATION.txt` are `REPLACE_ME` until the `v0.1.0` zip exists. Fill them after `scripts/publish-release.ps1` prints the SHA256.
+v0.1.0 checksums are filled in `sideclip/tools/chocolateyinstall.ps1` and `sideclip/tools/VERIFICATION.txt` for:
+
+- URL: https://github.com/kilrkrow/sideclip/releases/download/v0.1.0/Sideclip-win-x64-v0.1.0.zip
+- SHA256: `7F1E5597FA317C71EA2EFB6EAEB3EA7213548067E38C0464EDA7BDAAD13157A8`
 
 ## Pack (local)
 
@@ -13,11 +16,9 @@ choco pack
 
 Produces `sideclip.0.1.0.nupkg`.
 
-Do not pack while checksums are still `REPLACE_ME` if you intend to push — Chocolatey install will reject the placeholder.
-
 ## Install from local nupkg
 
-Requires the GitHub Release asset `Sideclip-win-x64-v0.1.0.zip` to already exist (the install script downloads it).
+Requires the GitHub Release asset `Sideclip-win-x64-v0.1.0.zip` (already published).
 
 ```powershell
 choco install sideclip -y --source "'.;https://community.chocolatey.org/api/v2/'"
@@ -33,42 +34,11 @@ choco push sideclip.0.1.0.nupkg --source https://push.chocolatey.org/ --api-key 
 
 Requires a [Chocolatey.org](https://community.chocolatey.org) account and package moderation for first publish.
 
-## First v0.1.0 publish (Guy / VENGEANCE)
+Optionally attach the nupkg to the existing GitHub Release:
 
-1. On Windows, from the repo root:
-
-   ```powershell
-   .\scripts\publish-release.ps1
-   ```
-
-   This publishes a self-contained `win-x64` folder, zips it to `artifacts\Sideclip-win-x64-v0.1.0.zip`, and prints SHA256.
-
-2. Create the GitHub Release (optionally attach the nupkg after step 4):
-
-   ```powershell
-   gh release create v0.1.0 artifacts\Sideclip-win-x64-v0.1.0.zip --title "Sideclip v0.1.0" --notes "First release: tray clipboard, picker, screenshot-path typer."
-   ```
-
-3. Replace every `REPLACE_ME` in:
-
-   - `pack/chocolatey/sideclip/tools/chocolateyinstall.ps1`
-   - `pack/chocolatey/sideclip/tools/VERIFICATION.txt`
-
-   with the SHA256 printed by the publish script (uppercase hex).
-
-4. Pack:
-
-   ```powershell
-   cd pack\chocolatey\sideclip
-   choco pack
-   ```
-
-5. Commit the checksum fill (or include it on the release branch), then optionally:
-
-   ```powershell
-   gh release upload v0.1.0 sideclip.0.1.0.nupkg
-   choco push sideclip.0.1.0.nupkg --source https://push.chocolatey.org/ --api-key <YOUR_KEY>
-   ```
+```powershell
+gh release upload v0.1.0 sideclip.0.1.0.nupkg
+```
 
 ## Bumping a version
 
