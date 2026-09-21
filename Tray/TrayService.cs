@@ -1,4 +1,5 @@
 ﻿using System.Drawing;
+using System.Reflection;
 using System.Windows.Forms;
 using Sideclip.Settings;
 
@@ -65,11 +66,12 @@ internal sealed class TrayService : IDisposable
         menu.Items.Add(_ttlMenu);
 
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("About Sideclip...", null, (_, _) => ShowAbout());
         menu.Items.Add("Exit", null, (_, _) => ExitApp?.Invoke());
 
         _icon = new NotifyIcon
         {
-            Text = "Sideclip",
+            Text = TrayTip(),
             Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? string.Empty)
                    ?? SystemIcons.Application,
             Visible = true,
@@ -81,6 +83,7 @@ internal sealed class TrayService : IDisposable
     public void RefreshHotkeyLabel()
     {
         _openPickerItem.Text = OpenLabel();
+        _icon.Text = TrayTip();
     }
 
     private void ApplyTtl(bool enabled, int seconds)
@@ -111,6 +114,39 @@ internal sealed class TrayService : IDisposable
         string.IsNullOrWhiteSpace(_settings.PickerHotkey)
             ? "Open clipboard"
             : "Open clipboard (" + _settings.PickerHotkey + ")";
+
+
+    private static string DisplayVersion()
+    {
+        var info = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(info))
+        {
+            var plus = info.IndexOf('+');
+            return plus > 0 ? info[..plus] : info;
+        }
+
+        var v = Assembly.GetExecutingAssembly().GetName().Version;
+        return v is null ? "0.1.0" : $"{v.Major}.{v.Minor}.{v.Build}";
+    }
+
+    private static string TrayTip()
+    {
+        // NotifyIcon.Text max 63 chars on Windows.
+        var tip = "Sideclip " + DisplayVersion();
+        return tip.Length <= 63 ? tip : tip[..63];
+    }
+
+    private void ShowAbout()
+    {
+        MessageBox.Show(
+            "Sideclip " + DisplayVersion() + Environment.NewLine +
+            "Tray clipboard beside Win+V." + Environment.NewLine +
+            "https://github.com/kilrkrow/sideclip",
+            "About Sideclip",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+    }
 
     public void Hint(string title, string text)
     {

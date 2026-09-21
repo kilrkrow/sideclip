@@ -23,25 +23,28 @@ internal static class SettingsManager
     {
         try
         {
-            if (File.Exists(SettingsPath))
+            // Fresh install only: Start with Windows defaults ON.
+            // Existing settings.json is never rewritten to flip Autostart.
+            if (!File.Exists(SettingsPath))
+                return new AppSettings { Autostart = true };
+
+            var json = File.ReadAllText(SettingsPath);
+            var s = JsonSerializer.Deserialize<AppSettings>(json, JsonOpts);
+            if (s is not null)
             {
-                var json = File.ReadAllText(SettingsPath);
-                var s = JsonSerializer.Deserialize<AppSettings>(json, JsonOpts);
-                if (s is not null)
-                {
-                    if (json.IndexOf("TtlEnabled", StringComparison.OrdinalIgnoreCase) < 0)
-                        s.TtlEnabled = true;
-                    if (s.TtlSeconds < 3) s.TtlSeconds = 12;
-                    if (s.TtlSeconds > 300) s.TtlSeconds = 300;
-                    return s;
-                }
+                if (json.IndexOf("TtlEnabled", StringComparison.OrdinalIgnoreCase) < 0)
+                    s.TtlEnabled = true;
+                if (s.TtlSeconds < 3) s.TtlSeconds = 12;
+                if (s.TtlSeconds > 300) s.TtlSeconds = 300;
+                return s;
             }
         }
         catch
         {
         }
 
-        return new AppSettings();
+        // Unreadable settings: treat as fresh defaults.
+        return new AppSettings { Autostart = true };
     }
 
     public static void Save(AppSettings settings)
