@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>sideclip</id>
+    <version>0.1.0</version>
+    <title>Sideclip</title>
+    <authors>kilrkrow</authors>
+    <projectUrl>https://github.com/kilrkrow/sideclip</projectUrl>
+    <projectSourceUrl>https://github.com/kilrkrow/sideclip</projectSourceUrl>
+    <docsUrl>https://github.com/kilrkrow/sideclip#readme</docsUrl>
+    <bugTrackerUrl>https://github.com/kilrkrow/sideclip/issues</bugTrackerUrl>
+    <packageSourceUrl>https://github.com/kilrkrow/sideclip/tree/main/pack/chocolatey/sideclip</packageSourceUrl>
+    <licenseUrl>https://github.com/kilrkrow/sideclip/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <summary>Windows tray clipboard that sits beside Win+V. It never steals Win+V.</summary>
+    <description>
+Sideclip is a Windows tray clipboard that sits beside Win+V. It never steals Win+V.
+
+- Watches the clipboard. Non-secrets persist locally. Secrets stay in memory and expire (always-secret for 1Password.exe / 1Password-BrowserSupport owner or foreground; browsers use the heuristic).
+- Picker: Ctrl+Shift+Win+V (type to filter, Enter paste, Shift+Enter copy).
+- Screenshot path: Ctrl+Shift+Win+P types the newest file in Pictures\Screenshots.
+- Release is tray-only. Hotkeys are assignable from the tray.
+
+This package downloads the official GitHub Release ZIP, installs Sideclip.exe, adds a Start Menu shortcut, and shims `sideclip` onto PATH.
+
+## Project
+
+https://github.com/kilrkrow/sideclip
+    </description>
+    <tags>clipboard tray windows</tags>
+    <releaseNotes>https://github.com/kilrkrow/sideclip/releases/tag/v0.1.0</releaseNotes>
+    <copyright>Copyright (c) 2026 kilrkrow</copyright>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>
