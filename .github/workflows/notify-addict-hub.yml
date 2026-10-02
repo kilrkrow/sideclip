@@ -1,0 +1,60 @@
+# Copy into each in-scope utility repo as:
+#   .github/workflows/notify-addict-hub.yml
+#
+# Fires only on release:published. Calls the hub reusable workflow so the
+# discovery site gets a catalog PR (never auto-merged).
+#
+# After the hub PR merges to main, this workflow_call target resolves.
+# Until then, use hub workflow_dispatch dry-run (see README).
+
+name: Notify addict discovery hub
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  pick-asset:
+    runs-on: ubuntu-latest
+    outputs:
+      asset_url: ${{ steps.pick.outputs.asset_url }}
+      asset_name: ${{ steps.pick.outputs.asset_name }}
+    steps:
+      - name: Prefer Windows app zip
+        id: pick
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const assets = context.payload.release.assets || [];
+            const score = (name) => {
+              const n = name.toLowerCase();
+              let s = 0;
+              if (n.endsWith('.msi')) s += 30;
+              else if (n.endsWith('.exe')) s += 24;
+              else if (n.endsWith('.zip')) s += 16;
+              else return -Infinity;
+              if (n.includes('app') || n.includes('gui') || n.includes('desktop')) s += 5;
+              if (n.includes('win-x64') || n.includes('win64') || n.includes('windows') || n.includes('win-x86')) s += 4;
+              else if (n.endsWith('.zip')) return -Infinity;
+              if (n.includes('cli') || n.includes('console')) s -= 8;
+              if (n.includes('nupkg') || n.includes('source') || n.includes('symbols')) s -= 20;
+              return s;
+            };
+            const ranked = assets
+              .map(a => ({ a, s: score(a.name || '') }))
+              .filter(x => x.s > -Infinity)
+              .sort((x, y) => y.s - x.s);
+            const best = ranked[0]?.a;
+            core.setOutput('asset_url', best?.browser_download_url || '');
+            core.setOutput('asset_name', best?.name || '');
+
+  notify-hub:
+    needs: pick-asset
+    uses: kilrkrow/kilrkrow-software-addict-hub/.github/workflows/release-fanout-callable.yml@main
+    with:
+      source_repo: ${{ github.repository }}
+      tag: ${{ github.event.release.tag_name }}
+      release_url: ${{ github.event.release.html_url }}
+      asset_url: ${{ needs.pick-asset.outputs.asset_url }}
+      asset_name: ${{ needs.pick-asset.outputs.asset_name }}
+    secrets: inherit
