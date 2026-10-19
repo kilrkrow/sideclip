@@ -11,6 +11,19 @@ public sealed class ClipEntry
     public DateTime CopiedAt { get; }
     public bool IsSecret { get; private set; }
 
+    /// <summary>
+    /// Pinned clips are never removed by the history caps and do not count
+    /// toward them. There is no pin UI yet; the flag is persisted so the
+    /// exemption is honored the day pinning ships.
+    /// </summary>
+    public bool IsPinned { get; set; }
+
+    /// <summary>
+    /// File name (no directory) of this clip's PNG under the images folder.
+    /// Assigned once, either when loaded from history.json or on first save.
+    /// </summary>
+    internal string? ImageFileName { get; set; }
+
     public void ClearSecretFlag()
     {
         IsSecret = false;
@@ -22,8 +35,13 @@ public sealed class ClipEntry
     private char[]? _payload;
 
     public ClipEntry(string text, bool isSecret, string ownerExe, byte[]? imagePng = null)
+        : this(text, isSecret, ownerExe, imagePng, DateTime.UtcNow)
     {
-        CopiedAt = DateTime.UtcNow;
+    }
+
+    internal ClipEntry(string text, bool isSecret, string ownerExe, byte[]? imagePng, DateTime copiedAtUtc)
+    {
+        CopiedAt = copiedAtUtc;
         IsSecret = isSecret;
         OwnerExe = ownerExe;
         ImagePng = imagePng;

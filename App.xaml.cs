@@ -17,7 +17,7 @@ public partial class App : System.Windows.Application
     private ClipHistoryStore? _history;
     private HotkeyListener? _hotkeys;
     private TrayService? _tray;
-    private MainWindow? _debug;
+    private MainWindow? _debug = null;
     private PickerWindow? _picker;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -26,9 +26,16 @@ public partial class App : System.Windows.Application
 
         _settings = SettingsManager.Load();
         SettingsManager.ApplyAutostart(_settings.Autostart);
+        PersistCapDecisionOnce();
 
         _watcher = new ClipboardWatcher();
-        _history = new ClipHistoryStore(Dispatcher, OnSecretExpired, TimeSpan.FromSeconds(_settings.TtlSeconds), _settings.TtlEnabled);
+        _history = new ClipHistoryStore(
+            Dispatcher,
+            OnSecretExpired,
+            TimeSpan.FromSeconds(_settings.TtlSeconds),
+            _settings.TtlEnabled,
+            _settings.MaxTextClips,
+            _settings.MaxImageClips);
 
         _watcher.ClipCaptured += OnClipCaptured;
         _watcher.ImageCaptured += OnImageCaptured;
@@ -42,13 +49,17 @@ public partial class App : System.Windows.Application
 
         _tray = new TrayService(_settings, OnSettingsChanged);
         _tray.OpenPicker += OpenPicker;
+#if DEBUG
         _tray.ToggleDebug += ApplyDebugVisibility;
-        _tray.EditHotkeys += OpenHotkeySettings;
+#endif
+        _tray.EditSettings += OpenSettings;
         _tray.ClearHistory += ClearHistory;
         _tray.ExitApp += Shutdown;
         _tray.RefreshHotkeyLabel();
         if (!string.IsNullOrWhiteSpace(_hotkeys.LastError))
             _tray.Hint("Sideclip", _hotkeys.LastError.Trim());
+        else if (CapsUpgradeNotice.TryConsume(_settings, SettingsManager.Save))
+            _tray.Hint(CapsUpgradeNotice.Title, CapsUpgradeNotice.Text);
 
 #if DEBUG
         _debug = new MainWindow(_watcher, _history);
@@ -57,9 +68,29 @@ public partial class App : System.Windows.Application
 #endif
     }
 
+    /// <summary>
+    /// Fresh and migrated profiles get their cap values decided in
+    /// SettingsManager.Load; write them once so the decision is never remade
+    /// (e.g. after the history has grown).
+    /// </summary>
+    private void PersistCapDecisionOnce()
+    {
+        if (!_settings.CapsNeedPersist)
+            return;
+        try
+        {
+            SettingsManager.Save(_settings);
+            _settings.CapsNeedPersist = false;
+        }
+        catch
+        {
+        }
+    }
+
     private void OnSettingsChanged(AppSettings settings)
     {
         SettingsManager.Save(settings);
+        _history?.SetCaps(settings.MaxTextClips, settings.MaxImageClips); // never deletes
         _history?.SetTtl(TimeSpan.FromSeconds(settings.TtlSeconds), settings.TtlEnabled);
         _hotkeys?.Apply(settings.PickerHotkey, settings.ScreenshotHotkey);
         _tray?.RefreshHotkeyLabel();
@@ -68,15 +99,33 @@ public partial class App : System.Windows.Application
             _tray?.Hint("Sideclip", _hotkeys.LastError.Trim());
     }
 
-    private void OpenHotkeySettings()
+    private void OpenSettings()
     {
-        var form = new HotkeySettingsForm(_settings);
+        using var form = new SettingsForm(
+            _settings,
+            () => _history?.CountCapped(ClipKind.Text) ?? 0,
+            () => _history?.CountCapped(ClipKind.Image) ?? 0);
         if (form.ShowDialog() != System.Windows.Forms.DialogResult.OK)
             return;
 
         _settings.PickerHotkey = form.PickerHotkey;
         _settings.ScreenshotHotkey = form.ScreenshotHotkey;
+        _settings.MaxTextClips = form.MaxTextClips;
+        _settings.MaxImageClips = form.MaxImageClips;
+
+        // Save the new caps first, then remove only what the user confirmed.
         OnSettingsChanged(_settings);
+        var removed = _history?.ApplyConfirmedLowering(
+            _settings.MaxTextClips,
+            _settings.MaxImageClips,
+            form.ConfirmedTextRemovals,
+            form.ConfirmedImageRemovals) ?? default;
+        if (removed.Total > 0 && _picker is not null)
+        {
+            _picker.Close();
+            _picker = null;
+        }
+
         _debug?.NoteCapture(false, "picker " + _settings.PickerHotkey + " / path " + _settings.ScreenshotHotkey);
     }
 
@@ -116,7 +165,7 @@ public partial class App : System.Windows.Application
 
     private void ClearHistory()
     {
-        _history?.ClearAll();
+        _history?.ClearHistory(); // spares pinned clips
         _debug?.NoteCapture(false, "history cleared");
         if (_picker is not null)
         {
