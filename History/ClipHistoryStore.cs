@@ -2,6 +2,7 @@
 using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Windows.Threading;
 using Sideclip.Settings;
 
@@ -12,11 +13,25 @@ namespace Sideclip.History;
 /// and optionally clears the live clipboard if that row is still latest.
 /// Picker sees only non-secrets. TTL Off leaves secrets in memory until
 /// expiry is turned back on.
+///
+/// Size limits: separate caps for non-pinned text clips and non-pinned image
+/// clips (0 = Unlimited). There is exactly one enforcement path,
+/// <see cref="EnforceCap"/>. It runs from two places only:
+///  1. Add: after inserting a new clip, remove at most ONE oldest clip of the
+///     same kind (so a store that is somehow far over its cap is never
+///     bulk-trimmed by a copy).
+///  2. ApplyConfirmedLowering: after the user confirmed an exact count in
+///     Settings, remove at most that many.
+/// Everything else (startup, raising a cap, Unlimited) removes nothing.
+/// Not thread-safe: call from the UI thread only (as the clipboard watcher
+/// and picker already do).
 /// </summary>
 public sealed class ClipHistoryStore : IDisposable
 {
     public const int DefaultTtlSeconds = 12;
-    public const int MaxEntries = 500;
+
+    // App-generated image names only: yyyyMMddHHmmssfff, optional -N suffix.
+    private static readonly Regex AppImageName = new(@"^\d{17}(-\d+)?\.png$", RegexOptions.CultureInvariant);
 
     private readonly Dispatcher _dispatcher;
     private readonly Action<ClipEntry> _onSecretExpired;
@@ -24,6 +39,9 @@ public sealed class ClipHistoryStore : IDisposable
     private readonly List<DispatcherTimer> _timers = new();
     private TimeSpan _ttl;
     private bool _ttlEnabled;
+    private int _maxText;
+    private int _maxImages;
+    private bool _loadFailed;
 
     public ObservableCollection<ClipEntryView> Rows { get; } = new();
 
@@ -36,13 +54,52 @@ public sealed class ClipHistoryStore : IDisposable
         Dispatcher dispatcher,
         Action<ClipEntry> onSecretExpired,
         TimeSpan? ttl = null,
-        bool ttlEnabled = true)
+        bool ttlEnabled = true,
+        int maxTextClips = ClipCaps.Unlimited,
+        int maxImageClips = ClipCaps.Unlimited)
     {
         _dispatcher = dispatcher;
+        _maxText = maxTextClips;
+        _maxImages = maxImageClips;
         _ttl = ttl ?? TimeSpan.FromSeconds(DefaultTtlSeconds);
         _ttlEnabled = ttlEnabled;
         _onSecretExpired = onSecretExpired;
         LoadNonSecrets();
+    }
+
+    public int MaxTextClips => _maxText;
+    public int MaxImageClips => _maxImages;
+
+    /// <summary>
+    /// Sets the caps. Never removes anything by itself, whatever the values.
+    /// </summary>
+    public void SetCaps(int maxTextClips, int maxImageClips)
+    {
+        _maxText = maxTextClips;
+        _maxImages = maxImageClips;
+    }
+
+    /// <summary>Stored clips of this kind that count toward its cap (non-pinned, non-secret).</summary>
+    public int CountCapped(ClipKind kind) => ClipCaps.CountOf(_entries, kind);
+
+    /// <summary>
+    /// Sets both caps, then removes oldest-first, at most the counts the user
+    /// confirmed. If the store holds fewer excess clips than confirmed (a copy
+    /// raced the dialog) it removes only the actual excess; it never removes
+    /// more than confirmed.
+    /// </summary>
+    public CapRemoval ApplyConfirmedLowering(
+        int maxTextClips,
+        int maxImageClips,
+        int confirmedTextRemovals,
+        int confirmedImageRemovals)
+    {
+        SetCaps(maxTextClips, maxImageClips);
+        var text = EnforceCap(ClipKind.Text, confirmedTextRemovals);
+        var images = EnforceCap(ClipKind.Image, confirmedImageRemovals);
+        if (text + images > 0)
+            PersistNonSecrets();
+        return new CapRemoval(text, images);
     }
 
     public void SetTtl(TimeSpan ttl, bool enabled)
@@ -92,7 +149,8 @@ public sealed class ClipHistoryStore : IDisposable
         var entry = new ClipEntry(text, isSecret, ownerExe, imagePng);
         Latest = entry;
         _entries.Insert(0, entry);
-        Trim();
+        if (!isSecret)
+            EnforceCap(ClipCaps.KindOf(entry), maxRemovals: 1);
 
         var preview = isSecret
             ? string.Empty
@@ -111,10 +169,18 @@ public sealed class ClipHistoryStore : IDisposable
             PersistNonSecrets();
         }
 
+        // Removed clips' image files are deleted by the PersistNonSecrets above.
         return entry;
     }
 
     public void RemoveEntry(ClipEntry entry)
+    {
+        RemoveCore(entry);
+        if (!entry.IsSecret)
+            PersistNonSecrets();
+    }
+
+    private void RemoveCore(ClipEntry entry)
     {
         _entries.Remove(entry);
         for (var i = Rows.Count - 1; i >= 0; i--)
@@ -127,8 +193,6 @@ public sealed class ClipHistoryStore : IDisposable
             Latest = _entries.Count > 0 ? _entries[0] : null;
 
         entry.WipePayload();
-        if (!entry.IsSecret)
-            PersistNonSecrets();
     }
 
     public void ClearNonSecrets()
@@ -197,15 +261,19 @@ public sealed class ClipHistoryStore : IDisposable
             row.Tick();
     }
 
-    private void Trim()
+    /// <summary>
+    /// THE enforcement path. Removes up to <paramref name="maxRemovals"/> of the
+    /// oldest non-pinned clips of <paramref name="kind"/> while that kind is
+    /// over its cap. Updates the in-memory lists only; the caller persists
+    /// (which also deletes the removed clips' image files).
+    /// </summary>
+    private int EnforceCap(ClipKind kind, int maxRemovals)
     {
-        while (_entries.Count > MaxEntries)
-        {
-            var last = _entries[^1];
-            if (last.IsSecret)
-                break;
-            RemoveEntry(last);
-        }
+        var cap = kind == ClipKind.Image ? _maxImages : _maxText;
+        var victims = ClipCaps.SelectOldestToRemove(_entries, kind, cap, maxRemovals);
+        foreach (var v in victims)
+            RemoveCore(v);
+        return victims.Count;
     }
 
     private static string ImageCaption(ClipEntry entry)
@@ -224,6 +292,13 @@ public sealed class ClipHistoryStore : IDisposable
             var list = new List<PersistedClip>();
             var keepImages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            // Names already claimed by entries that were loaded with one.
+            foreach (var e in _entries)
+            {
+                if (!e.IsSecret && e.IsImage && IsAppImageName(e.ImageFileName))
+                    keepImages.Add(e.ImageFileName!);
+            }
+
             foreach (var e in _entries)
             {
                 if (e.IsSecret)
@@ -232,12 +307,13 @@ public sealed class ClipHistoryStore : IDisposable
                 var rec = new PersistedClip
                 {
                     Owner = e.OwnerExe,
-                    CopiedAt = e.CopiedAt
+                    CopiedAt = e.CopiedAt,
+                    Pinned = e.IsPinned
                 };
 
                 if (e.IsImage && e.ImagePng is not null)
                 {
-                    var name = e.CopiedAt.ToString("yyyyMMddHHmmssfff") + ".png";
+                    var name = EnsureImageFileName(e, keepImages);
                     var path = Path.Combine(SettingsManager.ImagesDir, name);
                     if (!File.Exists(path))
                         File.WriteAllBytes(path, e.ImagePng);
@@ -254,18 +330,80 @@ public sealed class ClipHistoryStore : IDisposable
                 list.Add(rec);
             }
 
-            File.WriteAllText(
-                SettingsManager.HistoryPath,
-                JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true }));
+            // Write-then-replace so a crash mid-write cannot leave a truncated
+            // history.json (which would look like "no history" on next start).
+            var tmp = SettingsManager.HistoryPath + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true }));
+            File.Move(tmp, SettingsManager.HistoryPath, overwrite: true);
 
-            if (Directory.Exists(SettingsManager.ImagesDir))
+            // Only after history.json is safely written, and never when this
+            // session failed to read the existing history (it may still
+            // reference files we know nothing about).
+            if (!_loadFailed)
+                SweepOrphanImages(keepImages);
+        }
+        catch
+        {
+        }
+    }
+
+    private static bool IsAppImageName(string? name) =>
+        !string.IsNullOrEmpty(name) && AppImageName.IsMatch(name);
+
+    /// <summary>
+    /// Each image clip owns one file. The name is assigned once and never
+    /// collides with another clip's file or an existing file.
+    /// </summary>
+    private static string EnsureImageFileName(ClipEntry e, HashSet<string> claimed)
+    {
+        if (IsAppImageName(e.ImageFileName))
+            return e.ImageFileName!;
+
+        var stem = e.CopiedAt.ToString("yyyyMMddHHmmssfff", System.Globalization.CultureInfo.InvariantCulture);
+        var candidate = stem + ".png";
+        var n = 1;
+        while (claimed.Contains(candidate) || File.Exists(Path.Combine(SettingsManager.ImagesDir, candidate)))
+            candidate = stem + "-" + n++ + ".png";
+        e.ImageFileName = candidate;
+        return candidate;
+    }
+
+    /// <summary>
+    /// Deletes image files no stored clip references. Guarded: only direct
+    /// children of the app's images folder, only app-generated names, never
+    /// links. A file that cannot be deleted (locked, missing) is skipped and
+    /// retried on the next save. Never throws.
+    /// </summary>
+    private static void SweepOrphanImages(HashSet<string> keep)
+    {
+        try
+        {
+            var dir = Path.GetFullPath(SettingsManager.ImagesDir);
+            if (!Directory.Exists(dir))
+                return;
+
+            var prefix = dir.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            foreach (var file in Directory.EnumerateFiles(dir, "*.png"))
             {
-                foreach (var file in Directory.GetFiles(SettingsManager.ImagesDir, "*.png"))
+                try
                 {
-                    if (!keepImages.Contains(Path.GetFileName(file)))
-                    {
-                        try { File.Delete(file); } catch { }
-                    }
+                    var name = Path.GetFileName(file);
+                    if (keep.Contains(name) || !IsAppImageName(name))
+                        continue;
+
+                    var full = Path.GetFullPath(file);
+                    if (!full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                        || !string.Equals(Path.GetDirectoryName(full), dir.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    if ((File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0)
+                        continue;
+
+                    File.Delete(full);
+                }
+                catch
+                {
+                    // locked or already gone; the next save retries
                 }
             }
         }
@@ -289,18 +427,31 @@ public sealed class ClipHistoryStore : IDisposable
             foreach (var rec in list)
             {
                 byte[]? png = null;
+                string? imageName = null;
                 var text = rec.Text ?? string.Empty;
-                if (!string.IsNullOrEmpty(rec.ImageFile))
+                if (!string.IsNullOrEmpty(rec.ImageFile) && IsAppImageName(rec.ImageFile))
                 {
                     var path = Path.Combine(SettingsManager.ImagesDir, rec.ImageFile);
                     if (File.Exists(path))
+                    {
                         png = File.ReadAllBytes(path);
+                        imageName = rec.ImageFile;
+                    }
                 }
 
                 if (string.IsNullOrEmpty(text) && png is null)
                     continue;
 
-                var entry = new ClipEntry(text, isSecret: false, rec.Owner ?? "unknown", png);
+                var copiedAt = rec.CopiedAt == default
+                    ? DateTime.UtcNow
+                    : rec.CopiedAt.Kind == DateTimeKind.Unspecified
+                        ? DateTime.SpecifyKind(rec.CopiedAt, DateTimeKind.Utc)
+                        : rec.CopiedAt.ToUniversalTime();
+                var entry = new ClipEntry(text, isSecret: false, rec.Owner ?? "unknown", png, copiedAt)
+                {
+                    IsPinned = rec.Pinned,
+                    ImageFileName = imageName
+                };
                 _entries.Add(entry);
                 var preview = entry.IsImage ? ImageCaption(entry) : ClipEntry.MakeNonSecretPreview(text);
                 Rows.Add(new ClipEntryView(entry, () => _ttl, () => _ttlEnabled, preview));
@@ -310,9 +461,20 @@ public sealed class ClipHistoryStore : IDisposable
         }
         catch
         {
+            // Unreadable history: keep a copy of the file, and do not delete
+            // any image files this session.
+            _loadFailed = true;
+            try
+            {
+                var bak = SettingsManager.HistoryPath + ".corrupt.bak";
+                if (!File.Exists(bak) && File.Exists(SettingsManager.HistoryPath))
+                    File.Copy(SettingsManager.HistoryPath, bak);
+            }
+            catch
+            {
+            }
         }
     }
-
     public void Dispose()
     {
         foreach (var timer in _timers)

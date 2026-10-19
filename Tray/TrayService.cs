@@ -14,9 +14,11 @@ internal sealed class TrayService : IDisposable
     private readonly ToolStripMenuItem _ttlMenu;
 
     public event Action? OpenPicker;
+#if DEBUG
     public event Action? ToggleDebug;
+#endif
     public event Action? ExitApp;
-    public event Action? EditHotkeys;
+    public event Action? EditSettings;
     public event Action? ClearHistory;
 
     public TrayService(AppSettings settings, Action<AppSettings> onSettingsChanged)
@@ -28,7 +30,7 @@ internal sealed class TrayService : IDisposable
         _openPickerItem = new ToolStripMenuItem(OpenLabel()) { };
         _openPickerItem.Click += (_, _) => OpenPicker?.Invoke();
         menu.Items.Add(_openPickerItem);
-        menu.Items.Add("Hotkeys...", null, (_, _) => EditHotkeys?.Invoke());
+        menu.Items.Add("Settings...", null, (_, _) => EditSettings?.Invoke());
         menu.Items.Add("Clear history", null, (_, _) => ClearHistory?.Invoke());
         menu.Items.Add(new ToolStripSeparator());
 

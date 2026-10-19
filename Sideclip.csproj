@@ -21,6 +21,13 @@
     <Description>Windows tray clipboard that sits beside Win+V.</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- The test project lives in a subfolder; keep it out of the app build. -->
+    <Compile Remove="Sideclip.Tests/**" />
+    <None Remove="Sideclip.Tests/**" />
+    <Page Remove="Sideclip.Tests/**" />
+  </ItemGroup>
+
 </Project>
 
 
