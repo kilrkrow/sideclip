@@ -433,4 +433,122 @@ public class ClipHistoryStoreTests
         Assert.Equal(41, s.CountCapped(ClipKind.Image));
         Assert.Equal(41, p.ImageFiles().Length);
     }
-}
+
+    /// <summary>history.json with pinned and unpinned records (one image each kind).</summary>
+    private static void SeedPinned(TestProfile p)
+    {
+        Directory.CreateDirectory(p.Images);
+        File.WriteAllBytes(Path.Combine(p.Images, "20260101000000001.png"), TestProfile.Png(1)); // pinned image
+        File.WriteAllBytes(Path.Combine(p.Images, "20260101000000002.png"), TestProfile.Png(2)); // unpinned image
+        var now = DateTime.UtcNow;
+        var recs = new object[]
+        {
+            new { Text = (string?)"p-text", ImageFile = (string?)null, Owner = "x", Pinned = true, CopiedAt = now },
+            new { Text = (string?)"u-text-1", ImageFile = (string?)null, Owner = "x", Pinned = false, CopiedAt = now },
+            new { Text = (string?)null, ImageFile = (string?)"20260101000000001.png", Owner = "x", Pinned = true, CopiedAt = now },
+            new { Text = (string?)"u-text-2", ImageFile = (string?)null, Owner = "x", Pinned = false, CopiedAt = now },
+            new { Text = (string?)null, ImageFile = (string?)"20260101000000002.png", Owner = "x", Pinned = false, CopiedAt = now }
+        };
+        File.WriteAllText(Path.Combine(p.Root, "history.json"), JsonSerializer.Serialize(recs));
+    }
+
+    [Fact]
+    public void ClearNonSecrets_spares_pinned_and_deletes_only_the_removed_clips_image_files()
+    {
+        using var p = new TestProfile();
+        SeedPinned(p);
+        File.WriteAllText(Path.Combine(p.Images, "notes.txt"), "mine");
+        using var s = p.Open();
+        Assert.Equal(5, s.PickerEntries().Count());
+
+        s.ClearNonSecrets();
+
+        Assert.Equal(new[] { "p-text", "IMG:1" }, TestProfile.Order(s));
+        Assert.Equal(new[] { "20260101000000001.png", "notes.txt" }, p.ImageFiles());
+        using var reopened = p.Open();
+        Assert.Equal(new[] { "p-text", "IMG:1" }, TestProfile.Order(reopened));
+    }
+
+    [Fact]
+    public void ClearHistory_spares_pinned_wipes_secrets_and_persists()
+    {
+        using var p = new TestProfile();
+        SeedPinned(p);
+        using var s = p.Open();
+        s.Add("hunter2", true, "test");
+        Assert.Equal(6, s.Rows.Count); // 5 stored + 1 secret (secrets are not in the picker list)
+
+        s.ClearHistory();
+
+        Assert.Equal(new[] { "p-text", "IMG:1" }, TestProfile.Order(s));
+        Assert.Equal(2, s.Rows.Count);
+        Assert.Equal(new[] { "20260101000000001.png" }, p.ImageFiles());
+        Assert.Equal("p-text", s.Latest?.TryGetNonSecretText());
+        using var reopened = p.Open();
+        Assert.Equal(new[] { "p-text", "IMG:1" }, TestProfile.Order(reopened));
+    }
+
+    [Fact]
+    public void ClearHistory_with_nothing_pinned_clears_everything_and_all_image_files()
+    {
+        using var p = new TestProfile();
+        using var s = p.Open();
+        AddText(s, "a");
+        AddImage(s, 1);
+        AddImage(s, 2);
+        Assert.Equal(2, p.ImageFiles().Length);
+
+        s.ClearHistory();
+
+        Assert.Empty(s.PickerEntries());
+        Assert.Empty(s.Rows);
+        Assert.Null(s.Latest);
+        Assert.Empty(p.ImageFiles());
+    }
+
+    [Fact]
+    public void ClearHistory_never_deletes_foreign_files()
+    {
+        using var p = new TestProfile();
+        using var s = p.Open();
+        AddImage(s, 1);
+        File.WriteAllBytes(Path.Combine(p.Images, "holiday.png"), new byte[] { 1, 2, 3 });
+        var outside = Path.Combine(p.Root, "20260101000000000.png");
+        File.WriteAllBytes(outside, new byte[] { 9 });
+
+        s.ClearHistory();
+
+        Assert.Equal(new[] { "holiday.png" }, p.ImageFiles());
+        Assert.True(File.Exists(outside));
+    }
+
+    [Fact]
+    public void ClearAll_is_the_explicit_delete_everything_path_and_does_remove_pinned()
+    {
+        using var p = new TestProfile();
+        SeedPinned(p);
+        using var s = p.Open();
+
+        s.ClearAll();
+
+        Assert.Empty(s.PickerEntries());
+        Assert.Empty(p.ImageFiles());
+    }
+
+    [Fact]
+    public void Over_cap_profile_is_not_trimmed_by_opening_it_and_a_copy_removes_only_one_clip()
+    {
+        using var p = new TestProfile();
+        var recs = new List<object>();
+        var now = DateTime.UtcNow;
+        for (var i = 0; i < 10; i++)
+            recs.Add(new { Text = (string?)("old-" + i), ImageFile = (string?)null, Owner = "x", Pinned = false, CopiedAt = now });
+        File.WriteAllText(Path.Combine(p.Root, "history.json"), JsonSerializer.Serialize(recs));
+
+        using var s = p.Open(maxText: 3);
+        Assert.Equal(10, s.CountCapped(ClipKind.Text)); // opened over cap: untouched
+
+        AddText(s, "new");
+
+        Assert.Equal(10, s.CountCapped(ClipKind.Text)); // +1 added, exactly 1 evicted
+    }}

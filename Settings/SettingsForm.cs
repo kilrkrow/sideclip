@@ -180,14 +180,27 @@ internal sealed class SettingsForm : Form
 
         if (removeText > 0 || removeImage > 0)
         {
-            var message = BuildRemovalMessage(removeText, newText, removeImage, newImage);
+            // No limit was changed: the profile is simply over its limits (for
+            // example after an upgrade, or after limits were set while clips
+            // were stored). Same prompt, same exact counts.
+            var overLimitOnly = newText == _savedTextCap && newImage == _savedImageCap;
+            var message = BuildRemovalMessage(removeText, newText, removeImage, newImage, overLimitOnly);
             if (!ConfirmRemoval(this, message))
             {
-                // Not confirmed: nothing is applied, the limits go back to what
-                // they were, and the dialog stays open.
-                RestoreCaps();
                 ConfirmedTextRemovals = 0;
                 ConfirmedImageRemovals = 0;
+                if (!overLimitOnly)
+                {
+                    // A limit was lowered and not confirmed: nothing is applied,
+                    // the limits go back to what they were, and the dialog stays open.
+                    RestoreCaps();
+                    return;
+                }
+
+                // Limits unchanged and removal declined: keep the clips, keep
+                // the limits, and let the rest of the dialog (hotkeys) be saved.
+                // The same prompt comes back the next time OK is pressed.
+                DialogResult = DialogResult.OK;
                 return;
             }
         }
@@ -228,7 +241,8 @@ internal sealed class SettingsForm : Form
         box.SetValue(isUnlimited ? fallback : saved);
         box.Enabled = !isUnlimited;
     }
-    internal static string BuildRemovalMessage(int textCount, int textCap, int imageCount, int imageCap)
+
+    internal static string BuildRemovalMessage(int textCount, int textCap, int imageCount, int imageCap, bool overLimitOnly = false)
     {
         var lines = new List<string>();
         if (textCount > 0)
@@ -236,7 +250,10 @@ internal sealed class SettingsForm : Form
         if (imageCount > 0)
             lines.Add("  " + imageCount + (imageCount == 1 ? " image clip" : " image clips") + " (limit " + imageCap + "), including the image files");
 
-        return "This will permanently remove the oldest unpinned clips:"
+        var intro = overLimitOnly
+            ? "Your clip history is over its limits. This will permanently remove the oldest unpinned clips:"
+            : "This will permanently remove the oldest unpinned clips:";
+        return intro
                + Environment.NewLine + Environment.NewLine
                + string.Join(Environment.NewLine, lines)
                + Environment.NewLine + Environment.NewLine

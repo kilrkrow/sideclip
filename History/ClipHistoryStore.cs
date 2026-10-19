@@ -195,11 +195,29 @@ public sealed class ClipHistoryStore : IDisposable
         entry.WipePayload();
     }
 
+    /// <summary>
+    /// Removes every stored (non-secret) clip EXCEPT pinned ones. Image files
+    /// are deleted only for the clips removed here (PersistNonSecrets sweeps
+    /// files not referenced by a surviving clip).
+    /// </summary>
     public void ClearNonSecrets()
     {
+        RemoveUnpinnedNonSecretsNoPersist();
+        PersistNonSecrets();
+    }
+
+    /// <summary>
+    /// The user-facing "Clear history" (tray menu, picker Clear button and
+    /// Shift+Delete): removes all secret clips (and their timers) and every
+    /// non-secret clip that is not pinned. Pinned clips are never removed.
+    /// </summary>
+    public void ClearHistory()
+    {
+        // Secrets are memory-only and short-lived; Clear history always wipes
+        // them (a pinned secret is not a supported state).
         for (var i = _entries.Count - 1; i >= 0; i--)
         {
-            if (!_entries[i].IsSecret)
+            if (_entries[i].IsSecret)
             {
                 var e = _entries[i];
                 _entries.RemoveAt(i);
@@ -209,13 +227,44 @@ public sealed class ClipHistoryStore : IDisposable
 
         for (var i = Rows.Count - 1; i >= 0; i--)
         {
-            if (!Rows[i].Entry.IsSecret)
+            if (Rows[i].Entry.IsSecret)
                 Rows.RemoveAt(i);
         }
 
+        foreach (var timer in _timers)
+            timer.Stop();
+        _timers.Clear();
+
+        RemoveUnpinnedNonSecretsNoPersist();
+        Latest = _entries.Count > 0 ? _entries[0] : null;
         PersistNonSecrets();
     }
 
+    private void RemoveUnpinnedNonSecretsNoPersist()
+    {
+        for (var i = _entries.Count - 1; i >= 0; i--)
+        {
+            var e = _entries[i];
+            if (!e.IsSecret && !e.IsPinned)
+            {
+                _entries.RemoveAt(i);
+                e.WipePayload();
+            }
+        }
+
+        for (var i = Rows.Count - 1; i >= 0; i--)
+        {
+            var e = Rows[i].Entry;
+            if (!e.IsSecret && !e.IsPinned)
+                Rows.RemoveAt(i);
+        }
+    }
+
+    /// <summary>
+    /// EXPLICIT "delete everything": removes every clip including pinned ones.
+    /// Nothing in the UI calls this; the user-facing Clear history is
+    /// <see cref="ClearHistory"/>, which spares pinned clips.
+    /// </summary>
     public void ClearAll()
     {
         foreach (var timer in _timers)

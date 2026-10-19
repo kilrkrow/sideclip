@@ -266,4 +266,108 @@ public class SettingsFormTests
             }
         });
     }
-}
+
+    [Fact]
+    public void Over_limit_profile_prompts_on_OK_with_exact_counts_even_when_no_limit_changed()
+    {
+        Sta(() =>
+        {
+            using var f = new SettingsForm(Caps(30, 5), () => 40, () => 12);
+            string? asked = null;
+            f.ConfirmRemoval = (_, m) => { asked = m; return true; };
+
+            ClickOk(f);
+
+            Assert.NotNull(asked);
+            Assert.Contains("over its limits", asked);
+            Assert.Contains("10 text clips (limit 30)", asked);
+            Assert.Contains("7 image clips (limit 5)", asked);
+            Assert.Equal(DialogResult.OK, f.DialogResult);
+            Assert.Equal(10, f.ConfirmedTextRemovals);
+            Assert.Equal(7, f.ConfirmedImageRemovals);
+            Assert.Equal(30, f.MaxTextClips);
+            Assert.Equal(5, f.MaxImageClips);
+        });
+    }
+
+    [Fact]
+    public void Declining_the_over_limit_prompt_removes_nothing_and_keeps_the_limits()
+    {
+        Sta(() =>
+        {
+            using var f = new SettingsForm(Caps(30, 5), () => 40, () => 12);
+            var asks = 0;
+            f.ConfirmRemoval = (_, _) => { asks++; return false; };
+
+            ClickOk(f);
+
+            Assert.Equal(1, asks);
+            Assert.Equal(0, f.ConfirmedTextRemovals);
+            Assert.Equal(0, f.ConfirmedImageRemovals);
+            Assert.Equal(30, f.MaxTextClips);
+            Assert.Equal(5, f.MaxImageClips);
+            // Limits unchanged: the dialog closes so other settings can be saved.
+            Assert.Equal(DialogResult.OK, f.DialogResult);
+        });
+    }
+
+    [Fact]
+    public void Declining_while_a_limit_was_changed_still_restores_and_stays_open()
+    {
+        Sta(() =>
+        {
+            using var f = new SettingsForm(Caps(30, 5), () => 40, () => 12);
+            f.ConfirmRemoval = (_, _) => false;
+            Num(f, "Text clips limit").Text = "20";
+
+            ClickOk(f);
+
+            Assert.Equal(DialogResult.None, f.DialogResult);
+            Assert.Equal("30", Num(f, "Text clips limit").Text);
+            Assert.Equal(0, f.ConfirmedTextRemovals + f.ConfirmedImageRemovals);
+        });
+    }
+
+    [Fact]
+    public void Raising_a_limit_that_is_still_below_whats_stored_asks_nothing_and_removes_nothing()
+    {
+        Sta(() =>
+        {
+            using var f = new SettingsForm(Caps(30, 5), () => 40, () => 3);
+            var asks = 0;
+            f.ConfirmRemoval = (_, _) => { asks++; return false; };
+            Num(f, "Text clips limit").Text = "35";
+
+            ClickOk(f);
+
+            Assert.Equal(0, asks);
+            Assert.Equal(DialogResult.OK, f.DialogResult);
+            Assert.Equal(35, f.MaxTextClips);
+            Assert.Equal(0, f.ConfirmedTextRemovals + f.ConfirmedImageRemovals);
+        });
+    }
+
+    [Fact]
+    public void Profile_at_or_under_its_limits_and_unlimited_profiles_never_prompt_on_OK()
+    {
+        Sta(() =>
+        {
+            var asks = 0;
+            using var a = new SettingsForm(Caps(30, 5), () => 30, () => 5);
+            a.ConfirmRemoval = (_, _) => { asks++; return false; };
+            ClickOk(a);
+            using var b = new SettingsForm(Caps(AppSettings.Unlimited, AppSettings.Unlimited), () => 5000, () => 900);
+            b.ConfirmRemoval = (_, _) => { asks++; return false; };
+            ClickOk(b);
+            Assert.Equal(0, asks);
+            Assert.Equal(DialogResult.OK, a.DialogResult);
+            Assert.Equal(DialogResult.OK, b.DialogResult);
+        });
+    }
+
+    [Fact]
+    public void Over_limit_message_is_ascii()
+    {
+        var m = SettingsForm.BuildRemovalMessage(10, 30, 7, 5, overLimitOnly: true);
+        Assert.All(m, c => Assert.True(c == '\r' || c == '\n' || (c >= ' ' && c <= '~')));
+    }}

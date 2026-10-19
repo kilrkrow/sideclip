@@ -79,16 +79,19 @@ internal static class ClipCaps
     }
 
     /// <summary>
-    /// How many clips the user must confirm removing when the cap changes from
-    /// <paramref name="oldCap"/> to <paramref name="newCap"/> with
-    /// <paramref name="stored"/> countable clips stored. Raising the cap,
-    /// keeping it, or choosing Unlimited removes nothing.
+    /// How many clips the user must confirm removing when OK is pressed with the
+    /// cap going from <paramref name="oldCap"/> to <paramref name="newCap"/> and
+    /// <paramref name="stored"/> countable clips stored. Choosing Unlimited, or
+    /// raising a bounded cap, removes nothing. Keeping a cap that the stored
+    /// clips already exceed (an over-cap profile) or lowering it asks for
+    /// stored - newCap, so an over-cap profile is only ever trimmed after an
+    /// explicit confirmation.
     /// </summary>
     public static int PlanLowering(int oldCap, int newCap, int stored)
     {
         if (IsUnlimited(newCap))
             return 0;
-        if (!IsUnlimited(oldCap) && newCap >= oldCap)
+        if (!IsUnlimited(oldCap) && newCap > oldCap)
             return 0;
         return Math.Max(0, stored - newCap);
     }

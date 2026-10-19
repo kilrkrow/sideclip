@@ -89,6 +89,9 @@ internal static class SettingsManager
         {
             s.MaxTextClips = AppSettings.Unlimited;
             s.MaxImageClips = AppSettings.Unlimited;
+            // Only when the decision is written down, so the notice cannot
+            // repeat on every launch of a profile whose settings cannot be saved.
+            s.CapsUpgradeNoticePending = persist;
         }
 
         return s;
@@ -120,6 +123,10 @@ internal static class SettingsManager
         {
             s.MaxImageClips = AppSettings.NormalizeCap(s.MaxImageClips, AppSettings.MaxImageCap);
         }
+
+        // settings.json from before caps: migrated to Unlimited, tell the user once.
+        if (s.CapsNeedPersist)
+            s.CapsUpgradeNoticePending = true;
     }
 
     /// <summary>

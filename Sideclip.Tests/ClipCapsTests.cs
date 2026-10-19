@@ -99,7 +99,11 @@ public class ClipCapsTests
     [InlineData(100, 50, 80, 30)]   // lowering below stored
     [InlineData(100, 50, 40, 0)]    // lowering but still above stored
     [InlineData(50, 100, 80, 0)]    // raising removes nothing
-    [InlineData(50, 50, 80, 0)]     // same cap removes nothing (over-cap stays untouched)
+    [InlineData(50, 50, 80, 30)]    // same cap, profile over cap: OK asks for the excess
+    [InlineData(50, 50, 50, 0)]     // same cap, exactly at cap
+    [InlineData(50, 60, 80, 0)]     // raising (still over) removes nothing
+    [InlineData(50, 45, 80, 35)]    // lowering an over-cap profile asks for stored - newCap
+    [InlineData(0, 0, 500, 0)]      // Unlimited stays Unlimited
     [InlineData(0, 10, 25, 15)]     // Unlimited -> N counts as lowering
     [InlineData(10, 0, 25, 0)]      // N -> Unlimited removes nothing
     [InlineData(0, 0, 25, 0)]

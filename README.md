@@ -14,6 +14,9 @@ Settings has separate limits for stored **text** clips and **image** clips, each
 - New profiles start at 100 text / 25 image clips. Profiles that already have history (or a settings file from before limits existed) start at **Unlimited**; nothing is removed until you choose a limit.
 - At the limit, the oldest clip of that type is removed to make room, and its image file is deleted. Pinned clips are never removed and do not count toward a limit (there is no pin UI yet).
 - Lowering a limit below what is stored asks first, with the exact number of clips that will be removed (oldest first). Cancel removes nothing. Raising a limit or choosing Unlimited never removes anything.
+- If a profile is already over its limit, pressing OK in Settings asks the same question with the exact count (oldest unpinned first, per type). Nothing is removed until you confirm; answering No keeps everything. Starting the app never trims, and a copy removes at most one clip.
+- A profile migrated to Unlimited shows a one-time tray notice (it never repeats, never appears for a new profile, and removes nothing).
+- **Clear history** (tray menu, picker Clear button) removes everything except pinned clips and deletes only the image files of the clips it removed.
 - Secrets are not stored on disk and are not counted; they still expire by Secret TTL.
 - Stored in `settings.json` as `MaxTextClips` / `MaxImageClips` (`0` = Unlimited).
 

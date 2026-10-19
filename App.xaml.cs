@@ -58,6 +58,8 @@ public partial class App : System.Windows.Application
         _tray.RefreshHotkeyLabel();
         if (!string.IsNullOrWhiteSpace(_hotkeys.LastError))
             _tray.Hint("Sideclip", _hotkeys.LastError.Trim());
+        else if (CapsUpgradeNotice.TryConsume(_settings, SettingsManager.Save))
+            _tray.Hint(CapsUpgradeNotice.Title, CapsUpgradeNotice.Text);
 
 #if DEBUG
         _debug = new MainWindow(_watcher, _history);
@@ -163,7 +165,7 @@ public partial class App : System.Windows.Application
 
     private void ClearHistory()
     {
-        _history?.ClearAll();
+        _history?.ClearHistory(); // spares pinned clips
         _debug?.NoteCapture(false, "history cleared");
         if (_picker is not null)
         {

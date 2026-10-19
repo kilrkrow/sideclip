@@ -32,6 +32,13 @@ internal sealed class AppSettings
     public int MaxImageClips { get; set; } = DefaultMaxImageClips;
 
     /// <summary>
+    /// True once for a profile that existed before caps and was migrated to
+    /// Unlimited: the tray shows a one-time notice, then this is cleared and
+    /// saved (see CapsUpgradeNotice). Never set for a new profile.
+    /// </summary>
+    public bool CapsUpgradeNoticePending { get; set; }
+
+    /// <summary>
     /// Set by Load when the cap values were decided there (fresh or migrated
     /// profile) and should be written to settings.json once, so the decision is
     /// made exactly once. Not serialized.
