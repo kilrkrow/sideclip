@@ -1,0 +1,10 @@
+interface:
+  display_name: "Sideclip"
+  short_description: "Insert a recent Windows screenshot path"
+  icon_small: "./assets/sideclip.png"
+  icon_large: "./assets/sideclip.png"
+  brand_color: "#3D5A80"
+  default_prompt: "Show my latest screenshot and insert its path if I want it."
+
+policy:
+  allow_implicit_invocation: true

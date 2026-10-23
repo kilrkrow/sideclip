@@ -1,0 +1,21 @@
+{
+  "name": "Sideclip",
+  "description": "Windows tray clipboard plus a Grok/Codex skill that opens the picker.",
+  "owner": {
+    "name": "kilrkrow",
+    "url": "https://github.com/kilrkrow"
+  },
+  "plugins": [
+    {
+      "name": "sideclip",
+      "description": "Open the Sideclip picker and insert the chosen clip, or insert a recent screenshot file path.",
+      "category": "productivity",
+      "homepage": "https://github.com/kilrkrow/sideclip",
+      "keywords": ["clipboard", "screenshot", "windows", "picker"],
+      "source": {
+        "type": "local",
+        "path": "./plugin"
+      }
+    }
+  ]
+}

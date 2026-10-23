@@ -1,4 +1,8 @@
-﻿using System.Windows;
+﻿using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using Sideclip.Cli;
 using Sideclip.Clipboard;
 using Sideclip.History;
 using Sideclip.Hotkeys;
@@ -19,9 +23,45 @@ public partial class App : System.Windows.Application
     private TrayService? _tray;
     private MainWindow? _debug;
     private PickerWindow? _picker;
+    private Mutex? _single;
+    private IpcServer? _ipc;
+    private TaskCompletionSource<PickResult>? _pickWaiter;
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        try
+        {
+            if (CommandLine.TryRunAndExit(e.Args))
+            {
+                Environment.Exit(Environment.ExitCode);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                ConsoleAttach.Ensure();
+                Console.Error.WriteLine(ex.Message);
+            }
+            catch
+            {
+            }
+            Shutdown();
+            return;
+        }
+
+        _single = new Mutex(true, IpcServer.MutexName, out var created);
+        if (!created)
+        {
+            ConsoleAttach.Ensure();
+            var ping = IpcServer.TrySend("picker", 8_000);
+            if (ping is null || !ping.Ok)
+                System.Windows.MessageBox.Show("Sideclip is already running.", "Sideclip");
+            Shutdown();
+            return;
+        }
+
         base.OnStartup(e);
 
         _settings = SettingsManager.Load();
@@ -49,6 +89,9 @@ public partial class App : System.Windows.Application
         _tray.RefreshHotkeyLabel();
         if (!string.IsNullOrWhiteSpace(_hotkeys.LastError))
             _tray.Hint("Sideclip", _hotkeys.LastError.Trim());
+
+        _ipc = new IpcServer(Dispatcher, OpenPicker, PickFromCli);
+        _ipc.Start();
 
 #if DEBUG
         _debug = new MainWindow(_watcher, _history);
@@ -140,13 +183,40 @@ public partial class App : System.Windows.Application
         _picker = new PickerWindow(_history.PickerEntries(), restore, CommitPick);
         _picker.Deleted += entry => _history.RemoveEntry(entry);
         _picker.Cleared += ClearHistory;
+        _picker.Cancelled += () => FinishPick(new PickResult { Kind = "cancel" });
         _picker.Closed += (_, _) => _picker = null;
         _picker.Show();
         _picker.Activate();
     }
 
+    private Task<PickResult> PickFromCli()
+    {
+        var tcs = new TaskCompletionSource<PickResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Dispatcher.BeginInvoke(() =>
+        {
+            _pickWaiter = tcs;
+            OpenPicker();
+            if (_picker is null && !tcs.Task.IsCompleted)
+                tcs.TrySetResult(new PickResult { Kind = "cancel" });
+        });
+        return tcs.Task;
+    }
+
+    private void FinishPick(PickResult result)
+    {
+        var waiter = _pickWaiter;
+        _pickWaiter = null;
+        waiter?.TrySetResult(result);
+    }
+
     private void CommitPick(ClipEntry entry, bool paste)
     {
+        if (_pickWaiter is not null)
+        {
+            FinishPick(ResultFromEntry(entry));
+            return;
+        }
+
         if (_watcher is null)
             return;
 
@@ -182,14 +252,29 @@ public partial class App : System.Windows.Application
         _debug?.NoteCapture(false, "typed " + path);
     }
 
+    private static PickResult ResultFromEntry(ClipEntry entry)
+    {
+        if (entry.IsImage && entry.ImagePng is { Length: > 0 })
+        {
+            var path = Path.Combine(Path.GetTempPath(), "sideclip-pick.png");
+            File.WriteAllBytes(path, entry.ImagePng);
+            return new PickResult { Kind = "image", Path = path };
+        }
+
+        return new PickResult { Kind = "text", Text = entry.TryGetNonSecretText() ?? "" };
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
         _picker?.Close();
+        _ipc?.Dispose();
         _hotkeys?.Dispose();
         _tray?.Dispose();
         _history?.Dispose();
         _watcher?.Dispose();
         if (_debug is not null) { _debug.AllowClose = true; _debug.Close(); }
+        try { _single?.ReleaseMutex(); } catch { }
+        _single?.Dispose();
         base.OnExit(e);
     }
 }
