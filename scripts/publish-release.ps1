@@ -8,19 +8,21 @@
 
   Output: artifacts\Sideclip-win-x64-v<Version>.zip
 
+  Also copies .agents/skills/sideclip into the zip as skills/sideclip.
+
   After this script, create the GitHub Release (if needed) and put the printed
   SHA256 into pack/chocolatey/sideclip/tools/ (see pack/chocolatey/README.md).
 
 .PARAMETER Version
-  Semver without a leading v. Defaults to 0.1.0 (must match Sideclip.csproj / nuspec).
+  Semver without a leading v. Defaults to 0.2.0 (must match Sideclip.csproj / nuspec).
 
 .EXAMPLE
   .\scripts\publish-release.ps1
-  .\scripts\publish-release.ps1 -Version 0.1.0
+  .\scripts\publish-release.ps1 -Version 0.2.0
 #>
 [CmdletBinding()]
 param(
-  [string]$Version = '0.1.0'
+  [string]$Version = '0.2.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,6 +65,15 @@ if (-not (Test-Path $exe)) {
   throw "Sideclip.exe missing after publish: $exe"
 }
 
+& (Join-Path $repoRoot 'scripts\sync-agent-skill.ps1')
+$skillSrc = Join-Path $repoRoot '.agents\skills\sideclip'
+$skillDest = Join-Path $publishDir 'skills\sideclip'
+if (Test-Path -LiteralPath $skillDest) {
+  Remove-Item -LiteralPath $skillDest -Recurse -Force
+}
+New-Item -ItemType Directory -Path (Split-Path $skillDest) -Force | Out-Null
+Copy-Item -LiteralPath $skillSrc -Destination $skillDest -Recurse
+
 New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
 if (Test-Path $zipPath) {
   Remove-Item $zipPath -Force
@@ -84,8 +95,7 @@ Write-Host "  pack/chocolatey/sideclip/tools/chocolateyinstall.ps1"
 Write-Host "  pack/chocolatey/sideclip/tools/VERIFICATION.txt"
 Write-Host ""
 Write-Host "Create the GitHub Release:"
-Write-Host "  gh release create v$Version `"$zipPath`" --title `"Sideclip v$Version`" --notes `"First release: tray clipboard, picker, screenshot-path typer.`""
+Write-Host "  gh release create v$Version `"$zipPath`" --title `"Sideclip v$Version`" --notes `"CLI --pick/--shots, Grok/Codex skill, picker from agents.`""
 Write-Host ""
 Write-Host "Then pack Chocolatey (after checksums are filled):"
-Write-Host "  cd pack/chocolatey/sideclip"
-Write-Host "  choco pack"
+Write-Host "  .\scripts\pack-chocolatey.ps1"

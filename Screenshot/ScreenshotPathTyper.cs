@@ -12,22 +12,13 @@ internal static class ScreenshotPathTyper
     {
         reason = null;
         path = null;
-        var dir = Folder;
-        if (!Directory.Exists(dir))
+        if (!Directory.Exists(Folder))
         {
             reason = "Screenshots folder is missing.";
             return false;
         }
 
-        FileInfo? newest = null;
-        foreach (var file in new DirectoryInfo(dir).EnumerateFiles("*.*", SearchOption.TopDirectoryOnly))
-        {
-            if ((file.Attributes & FileAttributes.Hidden) != 0)
-                continue;
-            if (newest is null || file.LastWriteTimeUtc > newest.LastWriteTimeUtc)
-                newest = file;
-        }
-
+        var newest = ScreenshotFiles.NewestOne();
         if (newest is null)
         {
             reason = "No screenshots yet.";

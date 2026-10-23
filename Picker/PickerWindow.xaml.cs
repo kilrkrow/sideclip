@@ -249,6 +249,9 @@ public partial class PickerWindow : Window
 
     public event Action<ClipEntry>? Deleted;
     public event Action? Cleared;
+    public event Action? Cancelled;
+
+    private bool _didCommit;
 
     private void OnClearClick(object sender, RoutedEventArgs e) => ClearAll();
 
@@ -282,7 +285,19 @@ public partial class PickerWindow : Window
         List.ScrollIntoView(List.SelectedItem);
     }
 
-    private void OnRowActivate(object sender, MouseButtonEventArgs e) => Commit(paste: true);
+    private void OnRowActivate(object sender, MouseButtonEventArgs e)
+    {
+        Commit(paste: true);
+        e.Handled = true;
+    }
+
+    private void OnPreviewActivate(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount < 2)
+            return;
+        Commit(paste: true);
+        e.Handled = true;
+    }
 
     private void OnScrimClick(object sender, MouseButtonEventArgs e)
     {
@@ -301,12 +316,15 @@ public partial class PickerWindow : Window
             return;
         }
 
+        _didCommit = true;
         Close();
         _commit(sel, paste);
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        if (!_didCommit)
+            Cancelled?.Invoke();
         if (_restore != IntPtr.Zero)
             InputSender.FocusWindow(_restore);
         base.OnClosed(e);

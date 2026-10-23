@@ -1,0 +1,23 @@
+{
+  "name": "sideclip",
+  "version": "0.2.0",
+  "description": "Open the Sideclip picker and insert the chosen clip, or insert a recent screenshot file path.",
+  "author": {
+    "name": "kilrkrow",
+    "url": "https://github.com/kilrkrow/sideclip"
+  },
+  "homepage": "https://github.com/kilrkrow/sideclip",
+  "repository": "https://github.com/kilrkrow/sideclip",
+  "license": "MIT",
+  "keywords": ["screenshot", "clipboard", "windows", "sideclip"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Sideclip",
+    "shortDescription": "Sideclip picker or a recent screenshot path",
+    "longDescription": "Opens the Sideclip clipboard picker and inserts the chosen clip into the chat. For screenshot files, lists the newest paths in Pictures\\Screenshots as text (no image ingest).",
+    "developerName": "kilrkrow",
+    "category": "Productivity",
+    "brandColor": "#3D5A80",
+    "defaultPrompt": "Open the Sideclip picker and insert what I pick."
+  }
+}

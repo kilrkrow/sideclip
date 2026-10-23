@@ -65,6 +65,7 @@
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                 <Setter Property="Foreground" Value="#E5E9F6" />
                                 <Setter Property="Background" Value="Transparent" />
+                                <EventSetter Event="MouseDoubleClick" Handler="OnRowActivate" />
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="ListBoxItem">
@@ -87,12 +88,14 @@
                         <TextBlock x:Name="PreviewText"
                                    TextWrapping="Wrap"
                                    FontSize="14"
-                                   Foreground="#D2D5DC" />
+                                   Foreground="#D2D5DC"
+                                   MouseLeftButtonDown="OnPreviewActivate" />
                         <Image x:Name="PreviewImage"
                                Stretch="Uniform"
                                HorizontalAlignment="Left"
                                VerticalAlignment="Top"
-                               Visibility="Collapsed" />
+                               Visibility="Collapsed"
+                               MouseLeftButtonDown="OnPreviewActivate" />
                         <TextBlock x:Name="EmptyHint"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"

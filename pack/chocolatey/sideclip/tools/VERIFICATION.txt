@@ -3,17 +3,19 @@ Verification is intended to assist the Chocolatey moderators and community
 in verifying that this package's contents are trustworthy.
 
 1. Download the official release asset from:
-   https://github.com/kilrkrow/sideclip/releases/tag/v0.1.0
+   https://github.com/kilrkrow/sideclip/releases/tag/v0.2.0
 
-   - Sideclip-win-x64-v0.1.0.zip
-     https://github.com/kilrkrow/sideclip/releases/download/v0.1.0/Sideclip-win-x64-v0.1.0.zip
+   - Sideclip-win-x64-v0.2.0.zip
+     https://github.com/kilrkrow/sideclip/releases/download/v0.2.0/Sideclip-win-x64-v0.2.0.zip
 
 2. Obtain the SHA256 checksum, for example:
 
-   Get-FileHash .\Sideclip-win-x64-v0.1.0.zip -Algorithm SHA256
+   Get-FileHash .\Sideclip-win-x64-v0.2.0.zip -Algorithm SHA256
 
 3. Compare to the value used in tools\chocolateyinstall.ps1:
 
-   ZIP: 7F1E5597FA317C71EA2EFB6EAEB3EA7213548067E38C0464EDA7BDAAD13157A8
+   ZIP: 868E73FAE7705F3406E6D6D7B5B7D5CEDB5B9A7BA120FB7C84E44F9D856E832C
 
 The package does not embed the binaries; it downloads them from GitHub Releases at install time.
+The nupkg also contains tools\skill\sideclip (Grok/Codex skill), copied from this repo's
+.agents/skills/sideclip at pack time.
