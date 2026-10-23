@@ -1,11 +1,13 @@
 # Chocolatey package: `sideclip`
 
-Installs Sideclip from the official GitHub Release ZIP, shims `sideclip` onto PATH, and copies the Grok/Codex skill to `%USERPROFILE%\.agents\skills\sideclip`.
+Installs Sideclip from the official GitHub Release ZIP, shims `sideclip` onto PATH, and copies the skill to `%USERPROFILE%\.agents\skills\sideclip` (Grok, Codex) and `%USERPROFILE%\.claude\skills\sideclip` (Claude Code).
 
 v0.2.0 checksums are filled in `sideclip/tools/chocolateyinstall.ps1` and `sideclip/tools/VERIFICATION.txt` after `.\scripts\publish-release.ps1 -Version 0.2.0`:
 
 - URL: https://github.com/kilrkrow/sideclip/releases/download/v0.2.0/Sideclip-win-x64-v0.2.0.zip
 - SHA256: `868E73FAE7705F3406E6D6D7B5B7D5CEDB5B9A7BA120FB7C84E44F9D856E832C`
+
+The `sideclip.0.2.0.nupkg` was pushed to the community feed and is in Chocolatey moderation. Use the pack/push steps below for the next version.
 
 ## Pack (local)
 
