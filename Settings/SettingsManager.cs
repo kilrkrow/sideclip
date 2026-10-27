@@ -12,8 +12,7 @@ internal static class SettingsManager
         PropertyNameCaseInsensitive = true
     };
 
-    public static string Dir =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sideclip");
+    public static string Dir => AppProfile.DataDir;
 
     public static string SettingsPath => Path.Combine(Dir, "settings.json");
     public static string HistoryPath => Path.Combine(Dir, "history.json");
@@ -57,6 +56,10 @@ internal static class SettingsManager
     public static void ApplyAutostart(bool enabled)
     {
         const string keyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        // An isolated profile (SIDECLIP_DATA_DIR) must never rewrite the real autostart entry.
+        if (AppProfile.IsIsolated)
+            return;
+
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey(keyPath);

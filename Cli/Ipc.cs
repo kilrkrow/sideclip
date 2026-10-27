@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows.Threading;
+using Sideclip.Settings;
 
 namespace Sideclip.Cli;
 
@@ -19,8 +20,8 @@ internal sealed class PickResult
 
 internal sealed class IpcServer : IDisposable
 {
-    public const string PipeName = "Sideclip.cmd";
-    public const string MutexName = @"Local\Sideclip.single";
+    public static readonly string PipeName = "Sideclip.cmd" + AppProfile.NameSuffix;
+    public static readonly string MutexName = @"Local\Sideclip.single" + AppProfile.NameSuffix;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {

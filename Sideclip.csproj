@@ -19,6 +19,8 @@
     <Product>Sideclip</Product>
     <Copyright>Copyright (c) 2026 kilrkrow</Copyright>
     <Description>Windows tray clipboard that sits beside Win+V.</Description>
+    <!-- The unit tests live in their own project. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**</DefaultItemExcludes>
   </PropertyGroup>
 
 </Project>
