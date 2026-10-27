@@ -1,5 +1,4 @@
 ﻿using System.Drawing;
-using System.Reflection;
 using System.Windows.Forms;
 using Sideclip.Settings;
 
@@ -28,7 +27,7 @@ internal sealed class TrayService : IDisposable
         _openPickerItem = new ToolStripMenuItem(OpenLabel()) { };
         _openPickerItem.Click += (_, _) => OpenPicker?.Invoke();
         menu.Items.Add(_openPickerItem);
-        menu.Items.Add("Hotkeys...", null, (_, _) => EditHotkeys?.Invoke());
+        menu.Items.Add("Settings...", null, (_, _) => EditHotkeys?.Invoke());
         menu.Items.Add("Clear history", null, (_, _) => ClearHistory?.Invoke());
         menu.Items.Add(new ToolStripSeparator());
 
@@ -116,19 +115,7 @@ internal sealed class TrayService : IDisposable
             : "Open clipboard (" + _settings.PickerHotkey + ")";
 
 
-    private static string DisplayVersion()
-    {
-        var info = Assembly.GetExecutingAssembly()
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        if (!string.IsNullOrWhiteSpace(info))
-        {
-            var plus = info.IndexOf('+');
-            return plus > 0 ? info[..plus] : info;
-        }
-
-        var v = Assembly.GetExecutingAssembly().GetName().Version;
-        return v is null ? "0.1.0" : $"{v.Major}.{v.Minor}.{v.Build}";
-    }
+    private static string DisplayVersion() => AppVersion.Display();
 
     private static string TrayTip()
     {
