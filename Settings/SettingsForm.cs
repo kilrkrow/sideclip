@@ -194,10 +194,10 @@ internal sealed class SettingsForm : Form
         group.Controls.Add(_vaultBrowse);
 
         gy += ButtonH + 6;
-        _dailyNote = new Label { Location = new Point(x2, gy), Size = new Size(gx + gw - x2, 48), ForeColor = Text2 };
+        _dailyNote = new Label { Location = new Point(x2, gy), Size = new Size(gx + gw - x2, 36), ForeColor = Text2 };
         group.Controls.Add(_dailyNote);
 
-        gy += 48 + 4;
+        gy += 36 + 6;
         _ocr = new CheckBox
         {
             Text = ocrAvailable
