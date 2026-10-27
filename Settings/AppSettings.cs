@@ -17,6 +17,9 @@ internal sealed class AppSettings
     public bool DailyNoteEnabled { get; set; }
     public string DailyNoteVault { get; set; } = "";
 
+    /// <summary>Optional ATX heading (e.g. "## Sideclip Clips"). Clips go at the end of its section; blank = end of note.</summary>
+    public string DailyNoteHeading { get; set; } = "";
+
     /// <summary>Also put Windows OCR text in a collapsed callout under each embed. Only active with the daily note.</summary>
     public bool DailyNoteOcr { get; set; }
 }

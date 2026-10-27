@@ -22,12 +22,15 @@ internal sealed class DailyNoteService : IDisposable
     private readonly IssueNotifier _issues;
     private readonly Recognizer? _ocr;
     private readonly TimeSpan _ocrTimeout;
+    private readonly string? _heading;
     private readonly Channel<(string File, DateTime At)> _queue =
         Channel.CreateUnbounded<(string, DateTime)>(new UnboundedChannelOptions { SingleReader = true });
     private readonly CancellationTokenSource _cts = new();
 
-    public DailyNoteService(string vault, IssueNotifier issues, Recognizer? ocr = null, TimeSpan? ocrTimeout = null)
+    /// <param name="heading">Optional ATX heading ("## Sideclip Clips"); clips go under it. Blank = end of note.</param>
+    public DailyNoteService(string vault, IssueNotifier issues, Recognizer? ocr = null, TimeSpan? ocrTimeout = null, string? heading = null)
     {
+        _heading = NoteSections.IsValidHeading(heading) ? heading!.TrimEnd() : null;
         _vault = vault;
         _issues = issues;
         _ocr = ocr;
@@ -70,7 +73,7 @@ internal sealed class DailyNoteService : IDisposable
 
             // Re-read the plugin settings every time; the user may change them in Obsidian.
             var config = DailyNotesConfig.Load(_vault);
-            var result = DailyNoteWriter.Append(_vault, config, at, lines);
+            var result = DailyNoteWriter.Append(_vault, config, at, lines, heading: _heading);
             switch (result.Outcome)
             {
                 case NoteOutcome.Appended:

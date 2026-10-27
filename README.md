@@ -28,6 +28,11 @@ Tray > **Settings...** > **Screenshots**. Aimed at parity with ShareX's "After c
 - Uses the vault's core Daily notes settings in `.obsidian/daily-notes.json`: `folder`, `format` (Moment.js tokens, `/` makes subfolders, e.g. `YYYY/MMMM/YYYY-MM-DD`) and `template`. Without that file: `YYYY-MM-DD.md` at the vault root, like Obsidian.
 - If today's note does not exist yet it is created, from the template when one is set (`{{title}}`, `{{date}}`, `{{time}}`, `{{date:FORMAT}}`, `{{time:FORMAT}}` are filled in).
 - Append only: one line per screenshot, e.g. `- 14:05:32 ![[Attachments/Shots/Screenshot 2026-10-27 140532.png]]`. Existing text is never rewritten; the note's encoding and line endings are kept.
+- **Heading** (optional, one line of Markdown, e.g. `## Sideclip Clips`): clips go under that heading instead of at the end of the note.
+  - Must be an ATX heading: 1-6 `#`, a space, then text. Invalid input shows an error and is not saved; the last valid value is kept. Blank = end of note.
+  - The heading must match a whole line (trailing spaces ignored). Matches inside YAML frontmatter or fenced code blocks don't count, and the first match wins.
+  - Each clip (and its OCR callout) goes at the end of the heading's section. The section ends at the next heading of the same or a higher level, or at the end of the note; lower-level subheadings stay inside it. The clip goes after the section's last non-blank line, so blank lines before the next heading stay where they are.
+  - Heading not in today's note (including a note just created from the template): a blank line, the heading and the clip are added at the end. Later clips that day go under it. The heading itself is never edited, moved or duplicated, and the rest of the note stays byte for byte the same.
 - Copy folder inside the vault: the screenshot is embedded with `![[vault-relative path]]`. Outside the vault: a normal Markdown link to the file (`[name](file:///D:/Shots/name.png)`), and the settings window says so.
 
 **Add OCR text under each screenshot** (off by default, indented under the daily note option)

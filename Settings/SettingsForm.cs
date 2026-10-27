@@ -43,6 +43,10 @@ internal sealed class SettingsForm : Form
     private readonly Button _vaultBrowse;
     private readonly Label _dailyNote;
     private readonly CheckBox _ocr;
+    private readonly Label _headingLabel;
+    private readonly TextBox _heading;
+    private readonly Label _headingNote;
+    private string _lastValidHeading;
     private readonly bool _ocrAvailable;
 
     public string PickerHotkey => _picker.Text.Trim();
@@ -52,6 +56,9 @@ internal sealed class SettingsForm : Form
     public bool DailyNoteEnabled => _daily.Checked;
     public string DailyNoteVault => (_vault.SelectedItem as VaultItem)?.Path ?? string.Empty;
     public bool DailyNoteOcr => _ocr.Checked;
+
+    /// <summary>The last valid heading typed (blank allowed); invalid input is never returned.</summary>
+    public string DailyNoteHeading => _lastValidHeading;
 
     private readonly bool _inactive;
 
@@ -194,6 +201,30 @@ internal sealed class SettingsForm : Form
         group.Controls.Add(_vaultBrowse);
 
         gy += ButtonH + 6;
+        const int headingLabelW = 58;
+        _headingLabel = new Label { Text = "Heading", Location = new Point(x2, gy + 5), Size = new Size(headingLabelW, 18), ForeColor = Text1 };
+        group.Controls.Add(_headingLabel);
+        var saved = (settings.DailyNoteHeading ?? string.Empty).TrimEnd();
+        _lastValidHeading = saved.Length == 0 || NoteSections.IsValidHeading(saved) ? saved : string.Empty;
+        _heading = new TextBox
+        {
+            Location = new Point(x2 + headingLabelW + Gap, gy),
+            Width = gx + gw - (x2 + headingLabelW + Gap),
+            Text = _lastValidHeading,
+            PlaceholderText = "## Sideclip Clips",
+            BackColor = Field,
+            ForeColor = Text1,
+            AccessibleName = "Daily note heading"
+        };
+        _heading.AutoSize = false;
+        _heading.Height = RowH;
+        group.Controls.Add(_heading);
+
+        gy += RowH + 6;
+        _headingNote = new Label { Location = new Point(x2, gy), Size = new Size(gx + gw - x2, 18), ForeColor = Text2, AutoEllipsis = true };
+        group.Controls.Add(_headingNote);
+
+        gy += 18 + 6;
         _dailyNote = new Label { Location = new Point(x2, gy), Size = new Size(gx + gw - x2, 36), ForeColor = Text2 };
         group.Controls.Add(_dailyNote);
 
@@ -249,6 +280,13 @@ internal sealed class SettingsForm : Form
         _daily.CheckedChanged += (_, _) => UpdateStates();
         _vault.SelectedIndexChanged += (_, _) => UpdateStates();
         _ocr.CheckedChanged += (_, _) => UpdateStates();
+        _heading.TextChanged += (_, _) =>
+        {
+            var t = _heading.Text.TrimEnd();
+            if (t.Length == 0 || NoteSections.IsValidHeading(t))
+                _lastValidHeading = t;
+            UpdateStates();
+        };
         _copyBrowse.Click += (_, _) => BrowseCopyFolder();
         _vaultBrowse.Click += (_, _) => BrowseVault();
         UpdateStates();
@@ -292,6 +330,23 @@ internal sealed class SettingsForm : Form
         _vaultBrowse.Enabled = dailyOn;
         // OCR sits under the daily note and only means something while it is on.
         _ocr.Enabled = dailyOn && _ocrAvailable;
+        _heading.Enabled = dailyOn;
+        _headingLabel.Enabled = dailyOn;
+        _headingLabel.ForeColor = dailyOn ? Text1 : Color.Gray;
+        var headingText = _heading.Text.TrimEnd();
+        if (dailyOn && headingText.Length > 0 && !NoteSections.IsValidHeading(headingText))
+        {
+            _headingNote.Text = "Needs 1-6 #, a space, then text. Last valid value is kept.";
+            _headingNote.ForeColor = Warn;
+        }
+        else
+        {
+            _headingNote.Text = headingText.Length == 0
+                ? "Optional. Blank adds clips at the end of the note."
+                : "Clips go at the end of this section; added if missing.";
+            _headingNote.ForeColor = Text2;
+        }
+
         _dailyNote.ForeColor = Text2;
 
         if (!dailyAllowed)

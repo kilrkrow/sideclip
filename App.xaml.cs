@@ -148,7 +148,7 @@ public partial class App : System.Windows.Application
             {
                 // OCR is optional and runs on the note queue with a timeout; the copy never waits for it.
                 DailyNoteService.Recognizer? ocr = _settings.DailyNoteOcr && WindowsOcr.IsAvailable ? WindowsOcr.RecognizeAsync : null;
-                _dailyNotes = new DailyNoteService(vault, _issues, ocr, TimeSpan.FromSeconds(15));
+                _dailyNotes = new DailyNoteService(vault, _issues, ocr, TimeSpan.FromSeconds(15), _settings.DailyNoteHeading);
             }
 
             var copier = new ScreenshotCopier(source, dest, _issues);
@@ -179,6 +179,7 @@ public partial class App : System.Windows.Application
         _settings.DailyNoteEnabled = form.DailyNoteEnabled;
         _settings.DailyNoteVault = form.DailyNoteVault;
         _settings.DailyNoteOcr = form.DailyNoteOcr;
+        _settings.DailyNoteHeading = form.DailyNoteHeading;
         OnSettingsChanged(_settings);
         ApplyScreenshotFeatures();
         _debug?.NoteCapture(false, "picker " + _settings.PickerHotkey + " / path " + _settings.ScreenshotHotkey);

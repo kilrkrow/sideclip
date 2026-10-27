@@ -31,7 +31,7 @@ internal static class DailyNoteWriter
     private const int ErrorSharingViolation = unchecked((int)0x80070020);
     private const int ErrorLockViolation = unchecked((int)0x80070021);
 
-    public static NoteResult Append(string vault, DailyNotesConfig config, DateTime now, IReadOnlyList<string> lines, int attempts = 10, int retryMs = 200)
+    public static NoteResult Append(string vault, DailyNotesConfig config, DateTime now, IReadOnlyList<string> lines, int attempts = 10, int retryMs = 200, string? heading = null)
     {
         string notePath;
         try
@@ -59,7 +59,7 @@ internal static class DailyNoteWriter
                     created = TryCreate(vault, config, now, notePath, out templateMissing) || created;
                 }
 
-                AppendLines(notePath, lines);
+                AppendLines(notePath, lines, heading);
                 return new NoteResult { Outcome = NoteOutcome.Appended, NotePath = notePath, Created = created, TemplateMissing = templateMissing };
             }
             catch (IOException ex) when (ex.HResult is ErrorSharingViolation or ErrorLockViolation)
@@ -116,8 +116,14 @@ internal static class DailyNoteWriter
         }
     }
 
-    /// <summary>Appends whole lines to an existing file, matching its encoding and line endings.</summary>
-    public static void AppendLines(string path, IReadOnlyList<string> lines)
+    /// <summary>
+    /// Adds whole lines to an existing file, matching its encoding and line endings.
+    /// Without a heading the lines go at the end. With a heading they go at the end of that
+    /// heading's section (see <see cref="NoteSections"/>), or, if the heading is not in the note,
+    /// after a blank line and a new copy of the heading at the end. Bytes before the insertion
+    /// point are never rewritten and bytes after it are moved along unchanged.
+    /// </summary>
+    public static void AppendLines(string path, IReadOnlyList<string> lines, string? heading = null)
     {
         using var fs = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
         var existing = new byte[fs.Length];
@@ -130,20 +136,57 @@ internal static class DailyNoteWriter
             read += n;
         }
 
+        if (read < existing.Length)
+            Array.Resize(ref existing, read);
+
         var (encoding, bomLength) = Detect(existing);
-        var text = encoding.GetString(existing, bomLength, read - bomLength);
-        var nl = NewlineOf(text);
+        var noteLines = NoteSections.SplitLines(existing, bomLength, encoding);
+        var nl = NewlineOf(encoding.GetString(existing, bomLength, existing.Length - bomLength));
+        var endsWithNewline = noteLines.Count == 0 || noteLines[^1].TerminatorLength > 0;
 
         var sb = new StringBuilder();
-        if (text.Length > 0 && !(text.EndsWith('\n') || text.EndsWith('\r')))
-            sb.Append(nl);
-        foreach (var line in lines)
-            sb.Append(line).Append(nl);
+        long offset = existing.Length;
+        // Only a valid ATX heading is ever written; anything else falls back to "end of note".
+        var trimmedHeading = NoteSections.IsValidHeading(heading) ? heading!.TrimEnd() : string.Empty;
+
+        if (trimmedHeading.Length == 0)
+        {
+            if (existing.Length > bomLength && !endsWithNewline)
+                sb.Append(nl);
+            foreach (var line in lines)
+                sb.Append(line).Append(nl);
+        }
+        else
+        {
+            var insertAfter = NoteSections.FindInsertLine(noteLines, trimmedHeading);
+            if (insertAfter >= 0)
+            {
+                var at = noteLines[insertAfter];
+                offset = at.Start + at.Length + at.TerminatorLength;
+                if (at.TerminatorLength == 0)
+                    sb.Append(nl);
+                foreach (var line in lines)
+                    sb.Append(line).Append(nl);
+            }
+            else
+            {
+                if (existing.Length > bomLength && !endsWithNewline)
+                    sb.Append(nl);
+                // One blank line before the new heading, unless the note already ends with one.
+                if (noteLines.Count > 0 && !string.IsNullOrWhiteSpace(noteLines[^1].Text))
+                    sb.Append(nl);
+                sb.Append(trimmedHeading).Append(nl);
+                foreach (var line in lines)
+                    sb.Append(line).Append(nl);
+            }
+        }
 
         // GetBytes never writes a BOM, so a BOM only ever appears at the start, where it already was.
-        var bytes = encoding.GetBytes(sb.ToString());
-        fs.Seek(0, SeekOrigin.End);
-        fs.Write(bytes, 0, bytes.Length);
+        var insert = encoding.GetBytes(sb.ToString());
+        fs.Seek(offset, SeekOrigin.Begin);
+        fs.Write(insert, 0, insert.Length);
+        if (offset < existing.Length)
+            fs.Write(existing, (int)offset, existing.Length - (int)offset);
         fs.Flush(true);
     }
 
