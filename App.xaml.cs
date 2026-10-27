@@ -102,7 +102,7 @@ public partial class App : System.Windows.Application
 
         // Test hook for UI checks: open Settings right away instead of via the tray menu.
         if (Environment.GetEnvironmentVariable("SIDECLIP_OPEN_SETTINGS") == "1")
-            Dispatcher.BeginInvoke(OpenHotkeySettings, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            Dispatcher.BeginInvoke(() => OpenHotkeySettings(openInactive: true), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
 #if DEBUG
         _debug = new MainWindow(_watcher, _history);
@@ -160,9 +160,11 @@ public partial class App : System.Windows.Application
         }
     }
 
-    private void OpenHotkeySettings()
+    private void OpenHotkeySettings() => OpenHotkeySettings(openInactive: false);
+
+    private void OpenHotkeySettings(bool openInactive)
     {
-        using var form = new SettingsForm(_settings, ScreenshotFolder.Resolve(), ObsidianVaults.Load());
+        using var form = new SettingsForm(_settings, ScreenshotFolder.Resolve(), ObsidianVaults.Load(), openInactive);
         if (form.ShowDialog() != System.Windows.Forms.DialogResult.OK)
             return;
 

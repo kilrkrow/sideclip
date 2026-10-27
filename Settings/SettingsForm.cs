@@ -50,9 +50,13 @@ internal sealed class SettingsForm : Form
     public bool DailyNoteEnabled => _daily.Checked;
     public string DailyNoteVault => (_vault.SelectedItem as VaultItem)?.Path ?? string.Empty;
 
-    public SettingsForm(AppSettings settings, string screenshotsFolder, IReadOnlyList<ObsidianVault> vaults)
+    private readonly bool _inactive;
+
+    /// <param name="openInactive">Test hook only: show without taking keyboard focus from the user.</param>
+    public SettingsForm(AppSettings settings, string screenshotsFolder, IReadOnlyList<ObsidianVault> vaults, bool openInactive = false)
     {
         _screenshotsFolder = screenshotsFolder;
+        _inactive = openInactive;
 
         Text = "Sideclip settings";
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -230,6 +234,19 @@ internal sealed class SettingsForm : Form
         _copyBrowse.Click += (_, _) => BrowseCopyFolder();
         _vaultBrowse.Click += (_, _) => BrowseVault();
         UpdateStates();
+    }
+
+    protected override bool ShowWithoutActivation => _inactive;
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var cp = base.CreateParams;
+            if (_inactive)
+                cp.ExStyle |= 0x08000000; // WS_EX_NOACTIVATE
+            return cp;
+        }
     }
 
     private void UpdateStates()
