@@ -30,6 +30,19 @@ Tray > **Settings...** > **Screenshots**. Aimed at parity with ShareX's "After c
 - Append only: one line per screenshot, e.g. `- 14:05:32 ![[Attachments/Shots/Screenshot 2026-10-27 140532.png]]`. Existing text is never rewritten; the note's encoding and line endings are kept.
 - Copy folder inside the vault: the screenshot is embedded with `![[vault-relative path]]`. Outside the vault: a normal Markdown link to the file (`[name](file:///D:/Shots/name.png)`), and the settings window says so.
 
+**Add OCR text under each screenshot** (off by default, indented under the daily note option)
+
+- Runs the built-in Windows OCR (`Windows.Media.Ocr`, your Windows display languages) on each copy and puts the text in a collapsed callout under the embed:
+
+  ```markdown
+  - 14:05:32 ![[Attachments/Shots/Screenshot 2026-10-27 140532.png]]
+  > [!note]- OCR text
+  > recognised text
+  ```
+
+- Background only, with a 15 second limit per image. If OCR fails, times out or finds nothing, the embed line is still written. Copying never waits for it.
+- Greyed out if Windows has no OCR language installed.
+
 Problems (folder gone, vault moved, note locked) show one tray notification per kind, not one per screenshot. Nothing here can stop the clipboard watcher.
 
 ## Build

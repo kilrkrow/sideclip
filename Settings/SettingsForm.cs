@@ -42,6 +42,8 @@ internal sealed class SettingsForm : Form
     private readonly ComboBox _vault;
     private readonly Button _vaultBrowse;
     private readonly Label _dailyNote;
+    private readonly CheckBox _ocr;
+    private readonly bool _ocrAvailable;
 
     public string PickerHotkey => _picker.Text.Trim();
     public string ScreenshotHotkey => _shot.Text.Trim();
@@ -49,14 +51,16 @@ internal sealed class SettingsForm : Form
     public string ScreenshotCopyFolder => _copyFolder.Text.Trim();
     public bool DailyNoteEnabled => _daily.Checked;
     public string DailyNoteVault => (_vault.SelectedItem as VaultItem)?.Path ?? string.Empty;
+    public bool DailyNoteOcr => _ocr.Checked;
 
     private readonly bool _inactive;
 
     /// <param name="openInactive">Test hook only: show without taking keyboard focus from the user.</param>
-    public SettingsForm(AppSettings settings, string screenshotsFolder, IReadOnlyList<ObsidianVault> vaults, bool openInactive = false)
+    public SettingsForm(AppSettings settings, string screenshotsFolder, IReadOnlyList<ObsidianVault> vaults, bool ocrAvailable, bool openInactive = false)
     {
         _screenshotsFolder = screenshotsFolder;
         _inactive = openInactive;
+        _ocrAvailable = ocrAvailable;
 
         Text = "Sideclip settings";
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -193,7 +197,20 @@ internal sealed class SettingsForm : Form
         _dailyNote = new Label { Location = new Point(x2, gy), Size = new Size(gx + gw - x2, 48), ForeColor = Text2 };
         group.Controls.Add(_dailyNote);
 
-        gy += 48 + Edge - 4;
+        gy += 48 + 4;
+        _ocr = new CheckBox
+        {
+            Text = ocrAvailable
+                ? "Add OCR text under each screenshot (Windows OCR)"
+                : "Add OCR text (no Windows OCR language installed)",
+            Location = new Point(x2, gy),
+            Size = new Size(gx + gw - x2, CheckH),
+            Checked = settings.DailyNoteOcr,
+            ForeColor = Text1
+        };
+        group.Controls.Add(_ocr);
+
+        gy += CheckH + Edge - 4;
         group.Height = gy;
 
         // Vault list: obsidian.json first, then the saved one if it is not registered.
@@ -231,6 +248,7 @@ internal sealed class SettingsForm : Form
         _copyFolder.TextChanged += (_, _) => UpdateStates();
         _daily.CheckedChanged += (_, _) => UpdateStates();
         _vault.SelectedIndexChanged += (_, _) => UpdateStates();
+        _ocr.CheckedChanged += (_, _) => UpdateStates();
         _copyBrowse.Click += (_, _) => BrowseCopyFolder();
         _vaultBrowse.Click += (_, _) => BrowseVault();
         UpdateStates();
@@ -272,6 +290,8 @@ internal sealed class SettingsForm : Form
         var dailyOn = dailyAllowed && _daily.Checked;
         _vault.Enabled = dailyOn;
         _vaultBrowse.Enabled = dailyOn;
+        // OCR sits under the daily note and only means something while it is on.
+        _ocr.Enabled = dailyOn && _ocrAvailable;
         _dailyNote.ForeColor = Text2;
 
         if (!dailyAllowed)
@@ -297,7 +317,7 @@ internal sealed class SettingsForm : Form
         var config = DailyNotesConfig.Load(vault);
         var rel = config.RelativeNotePath(DateTime.Now);
         _dailyNote.Text = ScreenshotRules.IsInside(_copyFolder.Text.Trim(), vault)
-            ? "Today: " + rel + ". Screenshots are embedded with ![[...]]."
+            ? "Today: " + rel + ". Screenshots are embedded in the note."
             : "Today: " + rel + ". The copy folder is outside the vault, so the note gets file links instead of embeds.";
     }
 

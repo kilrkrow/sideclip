@@ -16,4 +16,7 @@ internal sealed class AppSettings
     /// <summary>Add each copied screenshot to today's Obsidian daily note. Only active while the copy is on.</summary>
     public bool DailyNoteEnabled { get; set; }
     public string DailyNoteVault { get; set; } = "";
+
+    /// <summary>Also put Windows OCR text in a collapsed callout under each embed. Only active with the daily note.</summary>
+    public bool DailyNoteOcr { get; set; }
 }

@@ -145,7 +145,11 @@ public partial class App : System.Windows.Application
             // Setting 2 only runs while Setting 1 is on and valid; its saved values stay either way.
             var vault = (_settings.DailyNoteVault ?? "").Trim();
             if (_settings.DailyNoteEnabled && vault.Length > 0)
-                _dailyNotes = new DailyNoteService(vault, _issues);
+            {
+                // OCR is optional and runs on the note queue with a timeout; the copy never waits for it.
+                DailyNoteService.Recognizer? ocr = _settings.DailyNoteOcr && WindowsOcr.IsAvailable ? WindowsOcr.RecognizeAsync : null;
+                _dailyNotes = new DailyNoteService(vault, _issues, ocr, TimeSpan.FromSeconds(15));
+            }
 
             var copier = new ScreenshotCopier(source, dest, _issues);
             var notes = _dailyNotes;
@@ -164,7 +168,7 @@ public partial class App : System.Windows.Application
 
     private void OpenHotkeySettings(bool openInactive)
     {
-        using var form = new SettingsForm(_settings, ScreenshotFolder.Resolve(), ObsidianVaults.Load(), openInactive);
+        using var form = new SettingsForm(_settings, ScreenshotFolder.Resolve(), ObsidianVaults.Load(), WindowsOcr.IsAvailable, openInactive);
         if (form.ShowDialog() != System.Windows.Forms.DialogResult.OK)
             return;
 
@@ -174,6 +178,7 @@ public partial class App : System.Windows.Application
         _settings.ScreenshotCopyFolder = form.ScreenshotCopyFolder;
         _settings.DailyNoteEnabled = form.DailyNoteEnabled;
         _settings.DailyNoteVault = form.DailyNoteVault;
+        _settings.DailyNoteOcr = form.DailyNoteOcr;
         OnSettingsChanged(_settings);
         ApplyScreenshotFeatures();
         _debug?.NoteCapture(false, "picker " + _settings.PickerHotkey + " / path " + _settings.ScreenshotHotkey);
