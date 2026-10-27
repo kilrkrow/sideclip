@@ -7,6 +7,7 @@ using Sideclip.Clipboard;
 using Sideclip.History;
 using Sideclip.Hotkeys;
 using Sideclip.Native;
+using Sideclip.Obsidian;
 using Sideclip.Picker;
 using Sideclip.Screenshot;
 using Sideclip.Settings;
@@ -26,6 +27,9 @@ public partial class App : System.Windows.Application
     private Mutex? _single;
     private IpcServer? _ipc;
     private TaskCompletionSource<PickResult>? _pickWaiter;
+    private IssueNotifier? _issues;
+    private ScreenshotCopier? _copier;
+    private DailyNoteService? _dailyNotes;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -93,6 +97,13 @@ public partial class App : System.Windows.Application
         _ipc = new IpcServer(Dispatcher, OpenPicker, PickFromCli);
         _ipc.Start();
 
+        _issues = new IssueNotifier(msg => Dispatcher.BeginInvoke(() => _tray?.Hint("Sideclip", msg)));
+        ApplyScreenshotFeatures();
+
+        // Test hook for UI checks: open Settings right away instead of via the tray menu.
+        if (Environment.GetEnvironmentVariable("SIDECLIP_OPEN_SETTINGS") == "1")
+            Dispatcher.BeginInvoke(() => OpenHotkeySettings(openInactive: true), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
 #if DEBUG
         _debug = new MainWindow(_watcher, _history);
         ApplyDebugVisibility();
@@ -111,15 +122,66 @@ public partial class App : System.Windows.Application
             _tray?.Hint("Sideclip", _hotkeys.LastError.Trim());
     }
 
-    private void OpenHotkeySettings()
+    /// <summary>(Re)starts the screenshot copier and daily-note writer from the current settings.</summary>
+    private void ApplyScreenshotFeatures()
     {
-        var form = new HotkeySettingsForm(_settings);
+        try
+        {
+            _copier?.Dispose();
+            _copier = null;
+            _dailyNotes?.Dispose();
+            _dailyNotes = null;
+            if (_issues is null || !_settings.ScreenshotCopyEnabled)
+                return;
+
+            var source = ScreenshotFolder.Resolve();
+            var dest = (_settings.ScreenshotCopyFolder ?? "").Trim();
+            if (!ScreenshotRules.IsCopyFolderValid(dest, source, out var reason))
+            {
+                _issues.Report(ScreenshotCopier.KindDestination, "Screenshot copy is off until the folder is fixed: " + reason);
+                return;
+            }
+
+            // Setting 2 only runs while Setting 1 is on and valid; its saved values stay either way.
+            var vault = (_settings.DailyNoteVault ?? "").Trim();
+            if (_settings.DailyNoteEnabled && vault.Length > 0)
+            {
+                // OCR is optional and runs on the note queue with a timeout; the copy never waits for it.
+                DailyNoteService.Recognizer? ocr = _settings.DailyNoteOcr && WindowsOcr.IsAvailable ? WindowsOcr.RecognizeAsync : null;
+                _dailyNotes = new DailyNoteService(vault, _issues, ocr, TimeSpan.FromSeconds(15), _settings.DailyNoteHeading);
+            }
+
+            var copier = new ScreenshotCopier(source, dest, _issues);
+            var notes = _dailyNotes;
+            if (notes is not null)
+                copier.Copied += (_, copy) => notes.Enqueue(copy, DateTime.Now);
+            _copier = copier;
+            copier.Start();
+        }
+        catch (Exception ex)
+        {
+            _issues?.Report("screenshot-setup", "Screenshot copy could not start: " + ex.Message);
+        }
+    }
+
+    private void OpenHotkeySettings() => OpenHotkeySettings(openInactive: false);
+
+    private void OpenHotkeySettings(bool openInactive)
+    {
+        using var form = new SettingsForm(_settings, ScreenshotFolder.Resolve(), ObsidianVaults.Load(), WindowsOcr.IsAvailable, openInactive);
         if (form.ShowDialog() != System.Windows.Forms.DialogResult.OK)
             return;
 
         _settings.PickerHotkey = form.PickerHotkey;
         _settings.ScreenshotHotkey = form.ScreenshotHotkey;
+        _settings.ScreenshotCopyEnabled = form.ScreenshotCopyEnabled;
+        _settings.ScreenshotCopyFolder = form.ScreenshotCopyFolder;
+        _settings.DailyNoteEnabled = form.DailyNoteEnabled;
+        _settings.DailyNoteVault = form.DailyNoteVault;
+        _settings.DailyNoteOcr = form.DailyNoteOcr;
+        _settings.DailyNoteHeading = form.DailyNoteHeading;
         OnSettingsChanged(_settings);
+        ApplyScreenshotFeatures();
         _debug?.NoteCapture(false, "picker " + _settings.PickerHotkey + " / path " + _settings.ScreenshotHotkey);
     }
 
@@ -267,6 +329,8 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         _picker?.Close();
+        _copier?.Dispose();
+        _dailyNotes?.Dispose();
         _ipc?.Dispose();
         _hotkeys?.Dispose();
         _tray?.Dispose();

@@ -1,4 +1,4 @@
-﻿namespace Sideclip.Settings;
+namespace Sideclip.Settings;
 
 internal sealed class AppSettings
 {
@@ -8,4 +8,18 @@ internal sealed class AppSettings
     public bool ShowDebugWindow { get; set; }
     public string PickerHotkey { get; set; } = "Ctrl+Shift+Win+V";
     public string ScreenshotHotkey { get; set; } = "Ctrl+Shift+Win+P";
+
+    /// <summary>Also copy every new file in the Screenshots folder to <see cref="ScreenshotCopyFolder"/>.</summary>
+    public bool ScreenshotCopyEnabled { get; set; }
+    public string ScreenshotCopyFolder { get; set; } = "";
+
+    /// <summary>Add each copied screenshot to today's Obsidian daily note. Only active while the copy is on.</summary>
+    public bool DailyNoteEnabled { get; set; }
+    public string DailyNoteVault { get; set; } = "";
+
+    /// <summary>Optional ATX heading (e.g. "## Sideclip Clips"). Clips go at the end of its section; blank = end of note.</summary>
+    public string DailyNoteHeading { get; set; } = "";
+
+    /// <summary>Also put Windows OCR text in a collapsed callout under each embed. Only active with the daily note.</summary>
+    public bool DailyNoteOcr { get; set; }
 }
