@@ -11,10 +11,6 @@ public sealed class ClipEntry
     public DateTime CopiedAt { get; }
     public bool IsSecret { get; private set; }
 
-    public void ClearSecretFlag()
-    {
-        IsSecret = false;
-    }
     public string OwnerExe { get; }
     public byte[]? ImagePng { get; }
     public bool IsImage => ImagePng is { Length: > 0 };
@@ -32,12 +28,15 @@ public sealed class ClipEntry
 
     public bool HasPayload => _payload is { Length: > 0 } || IsImage;
 
-    public string? TryGetNonSecretText()
+    public string? TryGetText()
     {
-        if (IsSecret || _payload is null)
+        if (_payload is null)
             return null;
         return new string(_payload);
     }
+
+    // Kept for callers that explicitly want null on a secret entry.
+    public string? TryGetNonSecretText() => IsSecret ? null : TryGetText();
 
     public bool PayloadEquals(string? live)
     {

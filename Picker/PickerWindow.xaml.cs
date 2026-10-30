@@ -13,6 +13,7 @@ public partial class PickerWindow : Window
     private string _filter = string.Empty;
     private IntPtr _restore;
     private readonly Action<ClipEntry, bool> _commit;
+    private bool _restoreSucceeded;
 
     public PickerWindow(IEnumerable<ClipEntry> entries, IntPtr restoreHwnd, Action<ClipEntry, bool> commit)
     {
@@ -21,7 +22,7 @@ public partial class PickerWindow : Window
         _commit = commit;
         foreach (var e in entries)
         {
-            if (!e.IsSecret && e.HasPayload)
+            if (e.HasPayload)
                 _all.Add(e);
         }
 
@@ -71,7 +72,7 @@ public partial class PickerWindow : Window
             return cap.Contains(q, StringComparison.OrdinalIgnoreCase);
         }
 
-        var text = e.TryGetNonSecretText() ?? string.Empty;
+        var text = e.TryGetText() ?? string.Empty;
         return text.Contains(q, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -99,7 +100,7 @@ public partial class PickerWindow : Window
         {
             Text = e.IsImage
                 ? $"Screenshot from {e.CopiedAt.ToLocalTime():dddd HH:mm}"
-                : ClipEntry.MakeListLine(e.TryGetNonSecretText() ?? string.Empty),
+                : ClipEntry.MakeListLine(e.TryGetText() ?? string.Empty),
             TextTrimming = TextTrimming.CharacterEllipsis,
             FontSize = 14,
             VerticalAlignment = VerticalAlignment.Center
@@ -131,7 +132,7 @@ public partial class PickerWindow : Window
         }
         else
         {
-            var t = e.TryGetNonSecretText() ?? string.Empty;
+            var t = e.TryGetText() ?? string.Empty;
             if (t.Length > 8192)
                 t = t[..8192];
             PreviewText.Text = t;
@@ -317,16 +318,30 @@ public partial class PickerWindow : Window
         }
 
         _didCommit = true;
-        Close();
-        _commit(sel, paste);
+        Close(); // OnClosed fires here and sets _restoreSucceeded
+        _commit(sel, paste && _restoreSucceeded);
     }
 
     protected override void OnClosed(EventArgs e)
     {
         if (!_didCommit)
             Cancelled?.Invoke();
-        if (_restore != IntPtr.Zero)
-            InputSender.FocusWindow(_restore);
+        if (_restore == IntPtr.Zero)
+        {
+            _restoreSucceeded = true;
+        }
+        else if (InputSender.FocusWindow(_restore))
+        {
+            // Confirm the window that actually received focus is _restore, not
+            // another window that jumped to the foreground during the transition.
+            NativeMethods.GetWindowThreadProcessId(NativeMethods.GetForegroundWindow(), out var fgPid);
+            NativeMethods.GetWindowThreadProcessId(_restore, out var restorePid);
+            _restoreSucceeded = fgPid != 0 && fgPid == restorePid;
+        }
+        else
+        {
+            _restoreSucceeded = false;
+        }
         base.OnClosed(e);
     }
 }

@@ -114,7 +114,17 @@ public sealed class ClipboardWatcher : IDisposable
         var fromOnePassword = ClipboardOwnerResolver.IsOnePasswordSource(
             ownerKnown2 ? exe2 : null,
             fgKnown ? fg : null);
-        var secret = fromOnePassword || SecretClassifier.LooksLikePassword(text);
+        var fromBrowser = ClipboardOwnerResolver.IsBrowser(ownerKnown2 ? exe2 : null)
+                       || ClipboardOwnerResolver.IsBrowser(fgKnown ? fg : null);
+
+        bool secret;
+        if (fromOnePassword)
+            secret = true;
+        else if (fromBrowser)
+            secret = SecretClassifier.LooksLikePasswordManagerPayload(text)
+                  || SecretClassifier.LooksLikePassword(text);
+        else
+            secret = SecretClassifier.LooksLikePassword(text);
 
         _lastAcceptedLen = text.Length;
         _lastAcceptedHash = hash;
@@ -124,7 +134,7 @@ public sealed class ClipboardWatcher : IDisposable
         ClipCaptured?.Invoke(text, secret, owner2);
     }
 
-    public void SetTextSuppressing(string text)
+    public void SetTextSuppressing(string text, bool isSecret = false)
     {
         try
         {
@@ -133,6 +143,8 @@ public sealed class ClipboardWatcher : IDisposable
             _lastAcceptedHash = text.GetHashCode();
             _lastAcceptedUtc = DateTime.UtcNow;
             System.Windows.Clipboard.SetText(text);
+            if (isSecret)
+                TryExcludeFromClipboardHistory();
         }
         catch
         {
@@ -158,6 +170,22 @@ public sealed class ClipboardWatcher : IDisposable
         {
             _suppressUntil = DateTime.MinValue;
         }
+    }
+
+    private static void TryExcludeFromClipboardHistory()
+    {
+        // Appends the ExcludeClipboardContentFromMonitorProcessing format to the
+        // open clipboard so Win+V / cloud clipboard history does not store this entry.
+        try
+        {
+            var fmt = NativeMethods.RegisterClipboardFormat(
+                "ExcludeClipboardContentFromMonitorProcessing");
+            if (fmt == 0) return;
+            if (!NativeMethods.OpenClipboard(IntPtr.Zero)) return;
+            try { NativeMethods.SetClipboardData(fmt, IntPtr.Zero); }
+            finally { NativeMethods.CloseClipboard(); }
+        }
+        catch { }
     }
 
     public bool ClearLiveIfMatches(ClipEntry entry)

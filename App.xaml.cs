@@ -26,6 +26,7 @@ public partial class App : System.Windows.Application
     private Mutex? _single;
     private IpcServer? _ipc;
     private TaskCompletionSource<PickResult>? _pickWaiter;
+    private readonly List<string> _pickPngPaths = new();
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -137,8 +138,6 @@ public partial class App : System.Windows.Application
 
     private void OnClipCaptured(string text, bool isSecret, string owner)
     {
-        if (!_settings.TtlEnabled)
-            isSecret = false;
         _history?.Add(text, isSecret, owner);
         _debug?.NoteCapture(isSecret, owner);
     }
@@ -213,7 +212,11 @@ public partial class App : System.Windows.Application
     {
         if (_pickWaiter is not null)
         {
-            FinishPick(ResultFromEntry(entry));
+            var result = ResultFromEntry(entry);
+            // Agent has the value now; wipe it from the store immediately.
+            if (entry.IsSecret)
+                _history?.RemoveEntry(entry);
+            FinishPick(result);
             return;
         }
 
@@ -224,10 +227,10 @@ public partial class App : System.Windows.Application
             _watcher.SetImageSuppressing(entry.ImagePng);
         else
         {
-            var text = entry.TryGetNonSecretText();
+            var text = entry.TryGetText();
             if (string.IsNullOrEmpty(text))
                 return;
-            _watcher.SetTextSuppressing(text);
+            _watcher.SetTextSuppressing(text, entry.IsSecret);
         }
 
         if (!paste)
@@ -252,16 +255,19 @@ public partial class App : System.Windows.Application
         _debug?.NoteCapture(false, "typed " + path);
     }
 
-    private static PickResult ResultFromEntry(ClipEntry entry)
+    private PickResult ResultFromEntry(ClipEntry entry)
     {
         if (entry.IsImage && entry.ImagePng is { Length: > 0 })
         {
-            var path = Path.Combine(Path.GetTempPath(), "sideclip-pick.png");
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "sideclip-pick-" + Guid.NewGuid().ToString("N") + ".png");
             File.WriteAllBytes(path, entry.ImagePng);
+            _pickPngPaths.Add(path);
             return new PickResult { Kind = "image", Path = path };
         }
 
-        return new PickResult { Kind = "text", Text = entry.TryGetNonSecretText() ?? "" };
+        return new PickResult { Kind = "text", Text = entry.TryGetText() ?? "" };
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -275,6 +281,12 @@ public partial class App : System.Windows.Application
         if (_debug is not null) { _debug.AllowClose = true; _debug.Close(); }
         try { _single?.ReleaseMutex(); } catch { }
         _single?.Dispose();
+
+        foreach (var p in _pickPngPaths)
+        {
+            try { File.Delete(p); } catch { }
+        }
+
         base.OnExit(e);
     }
 }
