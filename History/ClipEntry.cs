@@ -28,12 +28,15 @@ public sealed class ClipEntry
 
     public bool HasPayload => _payload is { Length: > 0 } || IsImage;
 
-    public string? TryGetNonSecretText()
+    public string? TryGetText()
     {
-        if (IsSecret || _payload is null)
+        if (_payload is null)
             return null;
         return new string(_payload);
     }
+
+    // Kept for callers that explicitly want null on a secret entry.
+    public string? TryGetNonSecretText() => IsSecret ? null : TryGetText();
 
     public bool PayloadEquals(string? live)
     {

@@ -22,7 +22,7 @@ public partial class PickerWindow : Window
         _commit = commit;
         foreach (var e in entries)
         {
-            if (!e.IsSecret && e.HasPayload)
+            if (e.HasPayload)
                 _all.Add(e);
         }
 
@@ -72,7 +72,7 @@ public partial class PickerWindow : Window
             return cap.Contains(q, StringComparison.OrdinalIgnoreCase);
         }
 
-        var text = e.TryGetNonSecretText() ?? string.Empty;
+        var text = e.TryGetText() ?? string.Empty;
         return text.Contains(q, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -100,7 +100,7 @@ public partial class PickerWindow : Window
         {
             Text = e.IsImage
                 ? $"Screenshot from {e.CopiedAt.ToLocalTime():dddd HH:mm}"
-                : ClipEntry.MakeListLine(e.TryGetNonSecretText() ?? string.Empty),
+                : ClipEntry.MakeListLine(e.TryGetText() ?? string.Empty),
             TextTrimming = TextTrimming.CharacterEllipsis,
             FontSize = 14,
             VerticalAlignment = VerticalAlignment.Center
@@ -132,7 +132,7 @@ public partial class PickerWindow : Window
         }
         else
         {
-            var t = e.TryGetNonSecretText() ?? string.Empty;
+            var t = e.TryGetText() ?? string.Empty;
             if (t.Length > 8192)
                 t = t[..8192];
             PreviewText.Text = t;

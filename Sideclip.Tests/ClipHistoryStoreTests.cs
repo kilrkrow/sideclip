@@ -83,7 +83,8 @@ public class ClipHistoryStoreTests
             store.SetTtl(TimeSpan.FromSeconds(30), enabled: false);
 
             Assert.True(entry.IsSecret);
-            Assert.Null(entry.TryGetNonSecretText());
+            Assert.Null(entry.TryGetNonSecretText()); // persist guard still returns null for secrets
+            Assert.NotNull(entry.TryGetText());       // but text is readable for picker display
             var json = HistoryJson(dir);
             Assert.DoesNotContain("s3cret-Pa55!", json);
         }

@@ -59,7 +59,7 @@ public sealed class ClipHistoryStore : IDisposable
             foreach (var timer in _timers)
                 timer.Stop();
             _timers.Clear();
-            // Leave IsSecret true — secrets stay hidden, never written to disk.
+            // Leave IsSecret true — secrets stay in picker RAM, never written to disk.
             PersistNonSecrets();
             return;
         }
@@ -78,7 +78,7 @@ public sealed class ClipHistoryStore : IDisposable
     {
         foreach (var e in _entries)
         {
-            if (!e.IsSecret && e.HasPayload)
+            if (e.HasPayload)
                 yield return e;
         }
     }

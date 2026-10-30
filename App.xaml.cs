@@ -223,7 +223,7 @@ public partial class App : System.Windows.Application
             _watcher.SetImageSuppressing(entry.ImagePng);
         else
         {
-            var text = entry.TryGetNonSecretText();
+            var text = entry.TryGetText();
             if (string.IsNullOrEmpty(text))
                 return;
             _watcher.SetTextSuppressing(text);
@@ -253,9 +253,6 @@ public partial class App : System.Windows.Application
 
     private PickResult ResultFromEntry(ClipEntry entry)
     {
-        if (entry.IsSecret)
-            return new PickResult { Kind = "cancel" };
-
         if (entry.IsImage && entry.ImagePng is { Length: > 0 })
         {
             var path = Path.Combine(
@@ -266,7 +263,7 @@ public partial class App : System.Windows.Application
             return new PickResult { Kind = "image", Path = path };
         }
 
-        return new PickResult { Kind = "text", Text = entry.TryGetNonSecretText() ?? "" };
+        return new PickResult { Kind = "text", Text = entry.TryGetText() ?? "" };
     }
 
     protected override void OnExit(ExitEventArgs e)
