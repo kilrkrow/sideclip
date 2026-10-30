@@ -326,7 +326,22 @@ public partial class PickerWindow : Window
     {
         if (!_didCommit)
             Cancelled?.Invoke();
-        _restoreSucceeded = _restore == IntPtr.Zero || InputSender.FocusWindow(_restore);
+        if (_restore == IntPtr.Zero)
+        {
+            _restoreSucceeded = true;
+        }
+        else if (InputSender.FocusWindow(_restore))
+        {
+            // Confirm the window that actually received focus is _restore, not
+            // another window that jumped to the foreground during the transition.
+            NativeMethods.GetWindowThreadProcessId(NativeMethods.GetForegroundWindow(), out var fgPid);
+            NativeMethods.GetWindowThreadProcessId(_restore, out var restorePid);
+            _restoreSucceeded = fgPid != 0 && fgPid == restorePid;
+        }
+        else
+        {
+            _restoreSucceeded = false;
+        }
         base.OnClosed(e);
     }
 }

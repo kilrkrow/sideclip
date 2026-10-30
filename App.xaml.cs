@@ -212,7 +212,11 @@ public partial class App : System.Windows.Application
     {
         if (_pickWaiter is not null)
         {
-            FinishPick(ResultFromEntry(entry));
+            var result = ResultFromEntry(entry);
+            // Agent has the value now; wipe it from the store immediately.
+            if (entry.IsSecret)
+                _history?.RemoveEntry(entry);
+            FinishPick(result);
             return;
         }
 
@@ -226,7 +230,7 @@ public partial class App : System.Windows.Application
             var text = entry.TryGetText();
             if (string.IsNullOrEmpty(text))
                 return;
-            _watcher.SetTextSuppressing(text);
+            _watcher.SetTextSuppressing(text, entry.IsSecret);
         }
 
         if (!paste)
