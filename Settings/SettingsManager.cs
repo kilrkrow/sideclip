@@ -12,8 +12,11 @@ internal static class SettingsManager
         PropertyNameCaseInsensitive = true
     };
 
+    // Set SIDECLIP_DATA_DIR in tests to redirect all data files to a temp directory.
     public static string Dir =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sideclip");
+        Environment.GetEnvironmentVariable("SIDECLIP_DATA_DIR") is { Length: > 0 } ov
+            ? ov
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sideclip");
 
     public static string SettingsPath => Path.Combine(Dir, "settings.json");
     public static string HistoryPath => Path.Combine(Dir, "history.json");

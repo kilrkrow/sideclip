@@ -114,7 +114,17 @@ public sealed class ClipboardWatcher : IDisposable
         var fromOnePassword = ClipboardOwnerResolver.IsOnePasswordSource(
             ownerKnown2 ? exe2 : null,
             fgKnown ? fg : null);
-        var secret = fromOnePassword || SecretClassifier.LooksLikePassword(text);
+        var fromBrowser = ClipboardOwnerResolver.IsBrowser(ownerKnown2 ? exe2 : null)
+                       || ClipboardOwnerResolver.IsBrowser(fgKnown ? fg : null);
+
+        bool secret;
+        if (fromOnePassword)
+            secret = true;
+        else if (fromBrowser)
+            secret = SecretClassifier.LooksLikePasswordManagerPayload(text)
+                  || SecretClassifier.LooksLikePassword(text);
+        else
+            secret = SecretClassifier.LooksLikePassword(text);
 
         _lastAcceptedLen = text.Length;
         _lastAcceptedHash = hash;

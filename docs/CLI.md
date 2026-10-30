@@ -21,6 +21,6 @@ Aliases: `--list` for `--shots`, `--latest` for `--newest`.
 
 ## `--pick` JSON
 
-- `kind` `image`: includes `path`
+- `kind` `image`: includes `path` — a unique temp file (`%TEMP%\sideclip-pick-<guid>.png`). Copy it before exiting if you need it to persist; the tray deletes its pick files on shutdown.
 - `kind` `text`: includes `text`
-- `kind` `cancel`: user closed without a choice
+- `kind` `cancel`: user closed without a choice, or the selected entry was secret

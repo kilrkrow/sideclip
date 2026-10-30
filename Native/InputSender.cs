@@ -74,14 +74,17 @@ internal static class InputSender
         if (toTid != 0 && toTid != cur && toTid != fgTid)
             NativeMethods.AttachThreadInput(cur, toTid, true);
 
-        var ok = NativeMethods.SetForegroundWindow(hwnd);
-
-        if (toTid != 0 && toTid != cur && toTid != fgTid)
-            NativeMethods.AttachThreadInput(cur, toTid, false);
-        if (fgTid != 0 && fgTid != cur)
-            NativeMethods.AttachThreadInput(cur, fgTid, false);
-
-        return ok;
+        try
+        {
+            return NativeMethods.SetForegroundWindow(hwnd);
+        }
+        finally
+        {
+            if (toTid != 0 && toTid != cur && toTid != fgTid)
+                NativeMethods.AttachThreadInput(cur, toTid, false);
+            if (fgTid != 0 && fgTid != cur)
+                NativeMethods.AttachThreadInput(cur, fgTid, false);
+        }
     }
 
     private static NativeMethods.INPUT Key(ushort vk, int scan, uint flags) => new()

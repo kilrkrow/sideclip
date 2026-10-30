@@ -59,11 +59,7 @@ public sealed class ClipHistoryStore : IDisposable
             foreach (var timer in _timers)
                 timer.Stop();
             _timers.Clear();
-            foreach (var e in _entries)
-            {
-                if (e.IsSecret)
-                    e.ClearSecretFlag();
-            }
+            // Leave IsSecret true — secrets stay hidden, never written to disk.
             PersistNonSecrets();
             return;
         }

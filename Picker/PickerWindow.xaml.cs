@@ -13,6 +13,7 @@ public partial class PickerWindow : Window
     private string _filter = string.Empty;
     private IntPtr _restore;
     private readonly Action<ClipEntry, bool> _commit;
+    private bool _restoreSucceeded;
 
     public PickerWindow(IEnumerable<ClipEntry> entries, IntPtr restoreHwnd, Action<ClipEntry, bool> commit)
     {
@@ -317,16 +318,15 @@ public partial class PickerWindow : Window
         }
 
         _didCommit = true;
-        Close();
-        _commit(sel, paste);
+        Close(); // OnClosed fires here and sets _restoreSucceeded
+        _commit(sel, paste && _restoreSucceeded);
     }
 
     protected override void OnClosed(EventArgs e)
     {
         if (!_didCommit)
             Cancelled?.Invoke();
-        if (_restore != IntPtr.Zero)
-            InputSender.FocusWindow(_restore);
+        _restoreSucceeded = _restore == IntPtr.Zero || InputSender.FocusWindow(_restore);
         base.OnClosed(e);
     }
 }
