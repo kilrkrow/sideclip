@@ -2,7 +2,7 @@
 
 Windows tray clipboard that sits beside Win+V. It never steals Win+V.
 
-- Watches the clipboard. Non-secrets persist locally. Secrets stay in memory and expire (always-secret for 1Password.exe / 1Password-BrowserSupport owner or foreground; browsers use the heuristic).
+- Watches the clipboard. Non-secrets persist locally. Secrets stay in memory, expire, and may appear in the picker until wiped (always-secret for 1Password.exe / 1Password-BrowserSupport owner or foreground; browsers use the heuristic).
 - Picker: `Ctrl+Shift+Win+V` (type to filter, Enter paste, Shift+Enter copy).
 - Screenshot path: `Ctrl+Shift+Win+P` types the newest file in `Pictures\Screenshots`.
 - CLI: `sideclip --shots [n]`, `sideclip --newest` (no tray needed), `sideclip --picker`, `sideclip --pick` (tray must be running).
@@ -13,13 +13,13 @@ Windows tray clipboard that sits beside Win+V. It never steals Win+V.
 
 ### GitHub Releases
 
-Download `Sideclip-win-x64-v0.2.0.zip` from [Releases](https://github.com/kilrkrow/sideclip/releases/latest), extract it, and run `Sideclip.exe`.
+Download `Sideclip-win-x64-v0.3.0.zip` from [Releases](https://github.com/kilrkrow/sideclip/releases/latest), extract it, and run `Sideclip.exe`.
 
 The zip also includes `skills/sideclip` for a manual skill copy.
 
 ### Chocolatey
 
-The `sideclip` 0.2.0 package has been submitted to the Chocolatey community feed and is in moderation. Once it is approved:
+The `sideclip` 0.3.0 package has been submitted to the Chocolatey community feed and is in moderation. Once it is approved:
 
 ```powershell
 choco install sideclip
@@ -43,6 +43,16 @@ Output: `bin\Release\net8.0-windows\win-x64\publish\Sideclip.exe`
 - **Screenshot path:** `Ctrl+Shift+Win+P` types the newest file in `Pictures\Screenshots`.
 - Tray icon for history, settings, and About.
 - Hotkeys are configurable from the tray. Defaults never bind `Win+V`, `Ctrl+Win+V`, or `Ctrl+Win+P`.
+
+## Type-out instead of paste
+
+Opt in from tray `Type selected text` -> `On`. Select a non-empty text history entry, click `Arm for type-out`, move the caret into the destination, and explicitly press Go (default `Ctrl+Win+Shift+T`). This never writes the entry to the clipboard. Esc cancels while the job is armed or typing; changing windows stops subsequent chunks. Go and pacing live in the existing tray settings/hotkey UI, persist across restarts, and a restart never preserves an armed job. Images, files/empty entries, invalid control/malformed UTF-16, and wiped secrets are ineligible.
+
+Live secrets may appear in the picker and be typed while their TTL is live. Typing does not start, reset, or extend their existing TTL timer. An expired/deleted/cleared source stops the job, with liveness and foreground handled checked before each chunk. Type-out adds no secret payload history, logs, file exports, or CLI/IPC route. CRLF/LF normalize to CR; tabs remain tabs; supplementary characters remain adjacent UTF-16 surrogate code units. NUL/unsupported controls/malformed UTF-16 are refused. `Type selected text` remains off by default for old settings files.
+
+SendInput is subject to Windows UIPI/integrity-level and focus/target constraints. It cannot promise elevated/secure-desktop/game/RDP/hostile-target compatibility. A bounded chunk after a focus check can still have a small unavoidable race, and no global text-caret claim is made. Only the selected plain text is sent; no macro engine or generic automation is introduced.
+
+See [type-out test plan and manual evidence batch](docs/TYPEOUT-TEST-PLAN.md).
 
 ## CLI
 
@@ -94,19 +104,19 @@ Direct plugin path: `grok plugin install kilrkrow/sideclip#plugin --trust`
 
 Codex: same `plugin\` tree (`plugin/.codex-plugin/plugin.json`). After the user-scope copy, `$sideclip` or `/skills`.
 
-After GitHub release `v0.2.0`, submit a remote catalog entry to [xai-org/plugin-marketplace](https://github.com/xai-org/plugin-marketplace) pointing at `https://github.com/kilrkrow/sideclip.git` (pinned SHA), so Grok `/marketplace` can list it.
+After GitHub release `v0.3.0`, submit a remote catalog entry to [xai-org/plugin-marketplace](https://github.com/xai-org/plugin-marketplace) pointing at `https://github.com/kilrkrow/sideclip.git` (pinned SHA), so Grok `/marketplace` can list it.
 
 ## Build and release zip
 
-On Windows, `.\scripts\publish-release.ps1` publishes to `artifacts\publish\win-x64`, zips `artifacts\Sideclip-win-x64-v0.2.0.zip` (includes `skills/sideclip`), and prints SHA256.
+On Windows, `.\scripts\publish-release.ps1` publishes to `artifacts\publish\win-x64`, zips `artifacts\Sideclip-win-x64-v0.3.0.zip` (includes `skills/sideclip`), and prints SHA256.
 
 ## Version
 
-`0.2.0` in `Sideclip.csproj` (`Version` / `AssemblyVersion`).
+`0.3.0` in `Sideclip.csproj` (`Version` / `AssemblyVersion`).
 
 ## Chocolatey packaging
 
-See [pack/chocolatey/README.md](pack/chocolatey/README.md). Package id `sideclip` downloads `Sideclip-win-x64-v0.2.0.zip` from GitHub Releases and installs the agent skill.
+See [pack/chocolatey/README.md](pack/chocolatey/README.md). Package id `sideclip` downloads `Sideclip-win-x64-v0.3.0.zip` from GitHub Releases and installs the agent skill.
 
 ## License
 

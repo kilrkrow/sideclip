@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text.Json;
 using Microsoft.Win32;
 
@@ -39,6 +39,11 @@ internal static class SettingsManager
                     s.TtlEnabled = true;
                 if (s.TtlSeconds < 3) s.TtlSeconds = 12;
                 if (s.TtlSeconds > 300) s.TtlSeconds = 300;
+                if (s.TypeOutDelayMs < 0) s.TypeOutDelayMs = 0;
+                if (s.TypeOutDelayMs > 250) s.TypeOutDelayMs = 250;
+                if (Hotkeys.HotkeyParser.IsForbidden(s.TypeOutGoHotkey)) s.TypeOutGoHotkey = "Ctrl+Win+Shift+T";
+                if (Hotkeys.HotkeyParser.IsForbidden(s.PickerHotkey)) s.PickerHotkey = "Ctrl+Shift+Win+V";
+                if (Hotkeys.HotkeyParser.IsForbidden(s.ScreenshotHotkey)) s.ScreenshotHotkey = "Ctrl+Shift+Win+P";
                 return s;
             }
         }

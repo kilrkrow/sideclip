@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
@@ -27,6 +27,7 @@ public sealed class ClipHistoryStore : IDisposable
 
     public ObservableCollection<ClipEntryView> Rows { get; } = new();
 
+    public event Action<ClipEntry>? EntryInvalidated = _ => { };
     public TimeSpan Ttl => _ttl;
     public bool TtlEnabled => _ttlEnabled;
 
@@ -72,6 +73,11 @@ public sealed class ClipHistoryStore : IDisposable
                     StartSecretTimer(e);
             }
         }
+    }
+
+    public bool IsPickerSource(ClipEntry entry)
+    {
+        lock (_entries) return _entries.Contains(entry, ReferenceEqualityComparer.Instance);
     }
 
     public IEnumerable<ClipEntry> PickerEntries()

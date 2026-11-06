@@ -1,4 +1,4 @@
-﻿using System.Drawing;
+using System.Drawing;
 using System.Reflection;
 using System.Windows.Forms;
 using Sideclip.Settings;
@@ -12,9 +12,18 @@ internal sealed class TrayService : IDisposable
     private readonly Action<AppSettings> _onSettingsChanged;
     private readonly ToolStripMenuItem _openPickerItem;
     private readonly ToolStripMenuItem _ttlMenu;
+    private readonly ToolStripMenuItem _typeOutMenu = new("Type selected text");
+    private readonly ToolStripMenuItem _typeOutParent;
+    private readonly ToolStripMenuItem _typeOutOff;
+    private readonly ToolStripMenuItem _typeOutOn;
+    private readonly ToolStripMenuItem _typeOutSpeed;
+    public event Action? TypeOutGoRequested;
+    public event Action? TypeOutCancelRequested;
 
     public event Action? OpenPicker;
+#pragma warning disable CS0067 // Invoked only by the debug-only menu item.
     public event Action? ToggleDebug;
+#pragma warning restore CS0067
     public event Action? ExitApp;
     public event Action? EditHotkeys;
     public event Action? ClearHistory;
@@ -22,7 +31,27 @@ internal sealed class TrayService : IDisposable
     public TrayService(AppSettings settings, Action<AppSettings> onSettingsChanged)
     {
         _settings = settings;
+        _typeOutParent = new ToolStripMenuItem("Type selected text") { CheckOnClick = false, Checked = settings.TypeOutEnabled };
+        _typeOutOff = new ToolStripMenuItem("Off");
+        _typeOutOff.Click += (_, _) => SetTypeOutEnabled(false);
+        _typeOutOn = new ToolStripMenuItem("On");
+        _typeOutOn.Click += (_, _) => SetTypeOutEnabled(true);
+        _typeOutParent.DropDownItems.AddRange(new ToolStripItem[] { _typeOutOff, _typeOutOn });
+        _typeOutSpeed = new ToolStripMenuItem("Delay between chunks") { ToolTipText = "Human typing delay: bounds 0 to 250 milliseconds." };
+        foreach (var ms in new[] { 0, 6, 12, 30, 80, 250 })
+        {
+            var item = new ToolStripMenuItem(ms + " ms") { Tag = ms };
+            item.Click += (_, _) =>
+            {
+                SetTypeOutDelay((int)(item.Tag ?? 12));
+            };
+            _typeOutSpeed.DropDownItems.Add(item);
+        }
+        _typeOutParent.DropDownItems.Add(_typeOutSpeed);
+        _typeOutParent.DropDownItems.Add(new ToolStripMenuItem("Go: " + settings.TypeOutGoHotkey + " (assign in Hotkeys...)") { Tag = "GoHint" });
         _onSettingsChanged = onSettingsChanged;
+        _typeOutMenu.DropDownItems.Add("Go (assigned hotkey)", null, (_, _) => TypeOutGoRequested?.Invoke());
+        _typeOutMenu.DropDownItems.Add("Cancel (Esc)", null, (_, _) => TypeOutCancelRequested?.Invoke());
 
         var menu = new ContextMenuStrip();
         _openPickerItem = new ToolStripMenuItem(OpenLabel()) { };
@@ -31,6 +60,8 @@ internal sealed class TrayService : IDisposable
         menu.Items.Add("Hotkeys...", null, (_, _) => EditHotkeys?.Invoke());
         menu.Items.Add("Clear history", null, (_, _) => ClearHistory?.Invoke());
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_typeOutMenu);
+        RefreshTypeOutSettings();
 
 #if DEBUG
         var debug = new ToolStripMenuItem("Debug window") { Checked = settings.ShowDebugWindow, CheckOnClick = true };
@@ -66,6 +97,8 @@ internal sealed class TrayService : IDisposable
         menu.Items.Add(_ttlMenu);
 
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_typeOutMenu);
+        RefreshTypeOutSettings();
         menu.Items.Add("About Sideclip...", null, (_, _) => ShowAbout());
         menu.Items.Add("Exit", null, (_, _) => ExitApp?.Invoke());
 
@@ -103,6 +136,54 @@ internal sealed class TrayService : IDisposable
                 continue;
             x.Checked = _settings.TtlEnabled ? tag == _settings.TtlSeconds : tag == 0;
         }
+    }
+
+    private void SetTypeOutDelay(int milliseconds)
+    {
+        _settings.TypeOutDelayMs = milliseconds;
+        RefreshTypeOutSettings();
+        _onSettingsChanged(_settings);
+        RefreshTypeOutSettings();
+    }
+
+    private void SetTypeOutEnabled(bool enabled)
+    {
+        _settings.TypeOutEnabled = enabled;
+        _onSettingsChanged(_settings);
+        RefreshTypeOutSettings();
+    }
+
+    private void RefreshTypeOutSettings()
+    {
+
+        _typeOutParent.Checked = _settings.TypeOutEnabled;
+        _typeOutParent.ToolTipText = _settings.TypeOutEnabled ? "Enabled. Arm entries in the picker." : "Disabled. Enable from the On submenu.";
+        _typeOutOn.Checked = _settings.TypeOutEnabled;
+        _typeOutOff.Checked = !_settings.TypeOutEnabled;
+        _typeOutSpeed.Enabled = _settings.TypeOutEnabled;
+
+        foreach (ToolStripMenuItem item in _typeOutSpeed.DropDownItems)
+            item.Checked = item.Tag is int ms && ms == _settings.TypeOutDelayMs;
+        foreach (ToolStripItem item in _typeOutParent.DropDownItems)
+            if (item.Tag is "GoHint") item.Text = "Go: " + _settings.TypeOutGoHotkey + " (assign in Hotkeys...)";
+    }
+
+    public void RefreshTypeOutStatus(string message)
+    {
+        _typeOutMenu.Text = message.Length <= 80 ? message : message[..77] + "...";
+        _typeOutMenu.ToolTipText = message;
+    }
+    public void RefreshTypeOutLabels()
+    {
+        var go = _settings.TypeOutGoHotkey;
+
+        foreach (ToolStripItem item in _typeOutParent.DropDownItems)
+            if (item.Tag is "GoHint")
+            {
+                item.Text = "Go: " + go + " (assign in Hotkeys...)";
+                item.Enabled = _settings.TypeOutEnabled;
+            }
+        RefreshTypeOutSettings();
     }
 
     private string TtlLabel() =>

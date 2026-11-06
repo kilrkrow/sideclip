@@ -1,4 +1,4 @@
-﻿using System.Windows.Media.Imaging;
+using System.Windows.Media.Imaging;
 
 namespace Sideclip.History;
 
@@ -15,6 +15,7 @@ public sealed class ClipEntry
     public byte[]? ImagePng { get; }
     public bool IsImage => ImagePng is { Length: > 0 };
 
+    private readonly object _payloadGate = new();
     private char[]? _payload;
 
     public ClipEntry(string text, bool isSecret, string ownerExe, byte[]? imagePng = null)
@@ -30,11 +31,12 @@ public sealed class ClipEntry
 
     public string? TryGetText()
     {
-        if (_payload is null)
-            return null;
-        return new string(_payload);
+        lock (_payloadGate)
+        {
+            if (_payload is null) return null;
+            return new string(_payload);
+        }
     }
-
     // Kept for callers that explicitly want null on a secret entry.
     public string? TryGetNonSecretText() => IsSecret ? null : TryGetText();
 
@@ -55,12 +57,13 @@ public sealed class ClipEntry
 
     public void WipePayload()
     {
-        if (_payload is null)
-            return;
-        Array.Clear(_payload, 0, _payload.Length);
-        _payload = null;
+        lock (_payloadGate)
+        {
+            if (_payload is null) return;
+            Array.Clear(_payload, 0, _payload.Length);
+            _payload = null;
+        }
     }
-
     public BitmapImage? TryDecodeImage()
     {
         if (ImagePng is null || ImagePng.Length == 0)
@@ -99,4 +102,3 @@ public sealed class ClipEntry
         return oneLine.Length <= max ? oneLine : string.Concat(oneLine.AsSpan(0, max), "...");
     }
 }
-

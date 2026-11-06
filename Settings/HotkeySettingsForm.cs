@@ -1,4 +1,4 @@
-﻿using System.Drawing;
+using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Sideclip.Hotkeys;
@@ -8,81 +8,75 @@ namespace Sideclip.Settings;
 
 internal sealed class HotkeySettingsForm : Form
 {
-    [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int vKey);
-
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
     private const int VkLwin = 0x5B;
     private const int VkRwin = 0x5C;
-
     private readonly TextBox _picker;
     private readonly TextBox _shot;
+    private readonly TextBox _go;
+    private readonly Label _error;
+
     public string PickerHotkey => _picker.Text.Trim();
     public string ScreenshotHotkey => _shot.Text.Trim();
+    public string TypeOutGoHotkey => _go.Text.Trim();
 
     public HotkeySettingsForm(AppSettings settings)
     {
         Text = "Sideclip hotkeys";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterScreen;
-        MaximizeBox = false;
-        MinimizeBox = false;
-        ClientSize = new Size(420, 180);
+        MaximizeBox = MinimizeBox = false;
+        ClientSize = new Size(440, 255);
         Font = new Font("Segoe UI", 9f);
         BackColor = Color.FromArgb(30, 30, 30);
         ForeColor = Color.Gainsboro;
-
-        Controls.Add(new Label { Text = "Picker", Location = new Point(12, 18), AutoSize = true, ForeColor = Color.Gainsboro });
-        _picker = CaptureBox(new Point(150, 14), settings.PickerHotkey);
-        Controls.Add(_picker);
-
-        Controls.Add(new Label { Text = "Screenshot path", Location = new Point(12, 56), AutoSize = true, ForeColor = Color.Gainsboro });
-        _shot = CaptureBox(new Point(150, 52), settings.ScreenshotHotkey);
-        Controls.Add(_shot);
-
-        Controls.Add(new Label
+        _picker = AddBox("Picker", 14, settings.PickerHotkey);
+        _shot = AddBox("Screenshot path", 52, settings.ScreenshotHotkey);
+        _go = AddBox("Type-out Go", 90, settings.TypeOutGoHotkey);
+        Controls.Add(new Label { Text = "Click a box and press the combo. Back clears. Esc cancels. Win+V stays with Windows.", Location = new Point(12, 132), Size = new Size(416, 32), ForeColor = Color.Silver });
+        _error = new Label { Location = new Point(12, 169), Size = new Size(416, 32), ForeColor = Color.LightSalmon };
+        Controls.Add(_error);
+        var ok = new Button { Text = "OK", Location = new Point(256, 213), Width = 80 };
+        ok.Click += (_, _) =>
         {
-            Text = "Click a box and press the combo. Back clears. Win+V stays with Windows.",
-            Location = new Point(12, 96),
-            Size = new Size(396, 32),
-            ForeColor = Color.Silver
-        });
+            var p = HotkeyParser.NormalizedOrError(_picker.Text);
+            var s = HotkeyParser.NormalizedOrError(_shot.Text);
+            var g = HotkeyParser.NormalizedOrError(_go.Text);
+            if (p == "Reserved Windows hotkeys cannot be assigned." || s == "Reserved Windows hotkeys cannot be assigned." || g == "Reserved Windows hotkeys cannot be assigned.")
+            { _error.Text = "Reserved hotkey. See the picker instruction."; return; }
+            foreach (var item in new[] { _picker.Text, _shot.Text, _go.Text })
+                if (!string.IsNullOrWhiteSpace(item) && !HotkeyParser.TryParse(item, out _, out _)) { _error.Text = "Each hotkey needs a non-modifier key, or be blank."; return; }
+            var values = new[] { HotkeyParser.Normalize(_picker.Text), HotkeyParser.Normalize(_shot.Text), HotkeyParser.Normalize(_go.Text) };
+            if (values.Any(string.IsNullOrEmpty) && _settingsNeedsGo(settings) && string.IsNullOrWhiteSpace(_go.Text))
+            { _error.Text = "Type-out is enabled, so its Go hotkey is required."; return; }
+            if (values.Where(v => !string.IsNullOrEmpty(v)).Distinct(StringComparer.OrdinalIgnoreCase).Count() < values.Count(v => !string.IsNullOrEmpty(v)))
+            { _error.Text = "Picker, screenshot, and Go cannot use the same hotkey."; return; }
+            DialogResult = DialogResult.OK;
+            Close();
+        };
+        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(344, 213), Width = 80 };
 
-        var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Location = new Point(236, 138), Width = 80 };
-        var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(324, 138), Width = 80 };
-        AcceptButton = ok;
         CancelButton = cancel;
+        FormClosing += (_, e) => { if (DialogResult != DialogResult.OK && DialogResult != DialogResult.Cancel) DialogResult = DialogResult.Cancel; };
         Controls.Add(ok);
         Controls.Add(cancel);
     }
 
-    private TextBox CaptureBox(Point loc, string value)
+    private static bool _settingsNeedsGo(AppSettings s) => s.TypeOutEnabled;
+
+    private TextBox AddBox(string label, int y, string value)
     {
-        var tb = new TextBox
+        Controls.Add(new Label { Text = label, Location = new Point(12, y + 4), AutoSize = true });
+        var box = new TextBox { Location = new Point(169, y), Width = 259, ReadOnly = true, Text = value, BackColor = Color.FromArgb(45, 45, 45), ForeColor = Color.Gainsboro };
+        box.KeyDown += (_, e) =>
         {
-            Location = loc,
-            Width = 250,
-            ReadOnly = true,
-            Text = value,
-            BackColor = Color.FromArgb(45, 45, 45),
-            ForeColor = Color.Gainsboro
+            e.SuppressKeyPress = true;
+            if (e.KeyCode == Keys.Back) { box.Text = string.Empty; return; }
+            var down = (GetAsyncKeyState(VkLwin) & 0x8000) != 0 || (GetAsyncKeyState(VkRwin) & 0x8000) != 0;
+            var parsed = HotkeyParser.FromKeyEvent(e, down);
+            if (!string.IsNullOrEmpty(parsed)) box.Text = parsed;
         };
-        tb.KeyDown += OnCapture;
-        return tb;
-    }
-
-    private void OnCapture(object? sender, KeyEventArgs e)
-    {
-        e.SuppressKeyPress = true;
-        var tb = (TextBox)sender!;
-        if (e.KeyCode == Keys.Back)
-        {
-            tb.Text = string.Empty;
-            return;
-        }
-
-        var win = (GetAsyncKeyState(VkLwin) & 0x8000) != 0 || (GetAsyncKeyState(VkRwin) & 0x8000) != 0;
-        var text = HotkeyParser.FromKeyEvent(e, win);
-        if (!string.IsNullOrEmpty(text))
-            tb.Text = text;
+        Controls.Add(box);
+        return box;
     }
 }

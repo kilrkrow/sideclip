@@ -14,15 +14,16 @@
   SHA256 into pack/chocolatey/sideclip/tools/ (see pack/chocolatey/README.md).
 
 .PARAMETER Version
-  Semver without a leading v. Defaults to 0.2.0 (must match Sideclip.csproj / nuspec).
+  Semver without a leading v. Defaults to 0.3.0 (must match Sideclip.csproj / nuspec).
 
 .EXAMPLE
   .\scripts\publish-release.ps1
-  .\scripts\publish-release.ps1 -Version 0.2.0
+  .\scripts\publish-release.ps1 -Version 0.3.0 -ArtifactRoot D:\scratch\sideclip-publish
 #>
 [CmdletBinding()]
 param(
-  [string]$Version = '0.2.0'
+  [string]$Version = '0.3.0',
+  [string]$ArtifactRoot = (Join-Path $PSScriptRoot '..\artifacts')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,7 +40,9 @@ if (-not (Test-Path $project)) {
   throw "Sideclip.csproj not found at $project"
 }
 
-$artifactRoot = Join-Path $repoRoot 'artifacts'
+$artifactRoot = [IO.Path]::GetFullPath($ArtifactRoot)
+$projectText = Get-Content -LiteralPath $project -Raw
+if (!$projectText.Contains("<Version>$Version</Version>")) { throw "Version must match Sideclip.csproj." }
 $publishDir = Join-Path $artifactRoot 'publish\win-x64'
 $zipName = "Sideclip-win-x64-v$Version.zip"
 $zipPath = Join-Path $artifactRoot $zipName

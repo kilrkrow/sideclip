@@ -1,4 +1,4 @@
-﻿<Window x:Class="Sideclip.MainWindow"
+<Window x:Class="Sideclip.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Sideclip debug"
@@ -29,7 +29,7 @@
                        FontSize="11"
                        Foreground="#8A8A8A"
                        TextWrapping="Wrap"
-                       Text="Secrets expire in TTL seconds and never appear in the picker. Non-secrets persist under %LocalAppData%\Sideclip. Tray owns the process." />
+                       Text="Secrets are memory-only, expire in TTL seconds, and may appear in the picker until wiped. Non-secrets persist under %LocalAppData%\Sideclip. Tray owns the process." />
         </Border>
         <ListView x:Name="HistoryList"
                   Margin="0"
@@ -47,5 +47,3 @@
         </ListView>
     </DockPanel>
 </Window>
-
-

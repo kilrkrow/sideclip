@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>sideclip</id>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
     <title>Sideclip</title>
     <authors>kilrkrow</authors>
     <projectUrl>https://github.com/kilrkrow/sideclip</projectUrl>
@@ -16,8 +16,8 @@
     <description>
 Sideclip is a Windows tray clipboard that sits beside Win+V. It never steals Win+V.
 
-- Watches the clipboard. Non-secrets persist locally. Secrets stay in memory and expire (always-secret for 1Password.exe / 1Password-BrowserSupport owner or foreground; browsers use the heuristic).
-- Picker: Ctrl+Shift+Win+V (type to filter, Enter paste, Shift+Enter copy).
+- Watches the clipboard. Non-secrets persist locally. Secrets stay in memory, expire, and may appear in the picker until wiped (always-secret for 1Password.exe / 1Password-BrowserSupport owner or foreground; browsers use the heuristic).
+- Picker: Ctrl+Shift+Win+V (type to filter, Enter paste, Shift+Enter copy). Optional type-out is off by default and supports live TTL-bounded secrets without clipboard use.
 - Screenshot path: Ctrl+Shift+Win+P types the newest file in Pictures\Screenshots.
 - CLI: sideclip --shots, --newest, --picker, --pick.
 - Agent skill (Grok / Codex): copies to ~/.agents/skills/sideclip so /sideclip opens the picker.
@@ -29,7 +29,7 @@ This package downloads the official GitHub Release ZIP, installs Sideclip.exe, a
 https://github.com/kilrkrow/sideclip
     </description>
     <tags>clipboard tray windows grok codex skill</tags>
-    <releaseNotes>https://github.com/kilrkrow/sideclip/releases/tag/v0.2.0</releaseNotes>
+    <releaseNotes>https://github.com/kilrkrow/sideclip/releases/tag/v0.3.0</releaseNotes>
     <copyright>Copyright (c) 2026 kilrkrow</copyright>
   </metadata>
   <files>

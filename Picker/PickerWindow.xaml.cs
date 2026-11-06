@@ -1,8 +1,9 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Sideclip.History;
 using Sideclip.Native;
+using Sideclip.TypeOut;
 
 namespace Sideclip.Picker;
 
@@ -14,12 +15,15 @@ public partial class PickerWindow : Window
     private IntPtr _restore;
     private readonly Action<ClipEntry, bool> _commit;
     private bool _restoreSucceeded;
+    public event Action<ClipEntry>? TypeOutRequested;
+    private readonly bool _typeOutEnabled;
 
-    public PickerWindow(IEnumerable<ClipEntry> entries, IntPtr restoreHwnd, Action<ClipEntry, bool> commit)
+    public PickerWindow(IEnumerable<ClipEntry> entries, IntPtr restoreHwnd, Action<ClipEntry, bool> commit, bool typeOutEnabled = false)
     {
         InitializeComponent();
         _restore = restoreHwnd;
         _commit = commit;
+        _typeOutEnabled = typeOutEnabled;
         foreach (var e in entries)
         {
             if (e.HasPayload)
@@ -27,7 +31,7 @@ public partial class PickerWindow : Window
         }
 
         ApplyFilter();
-        Loaded += (_, _) => Activate();
+        Loaded += (_, _) => { Activate(); List.Focus(); };
     }
 
     private void ApplyFilter()
@@ -74,6 +78,30 @@ public partial class PickerWindow : Window
 
         var text = e.TryGetText() ?? string.Empty;
         return text.Contains(q, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OnTypeOutClick(object sender, RoutedEventArgs e)
+    {
+        var entry = Selected();
+        if (entry is null || !_typeOutEnabled || TypeOutSession.CanType(entry, entry.HasPayload) == false) return;
+        _didCommit = true;
+        Close();
+        if (_restoreSucceeded)
+        {
+            _restore = NativeMethods.GetForegroundWindow();
+            TypeOutRequested?.Invoke(entry);
+        }
+    }
+
+    private void OnCopyClick(object sender, RoutedEventArgs e) => Commit(paste: false);
+
+    private void RefreshTypeOut(ClipEntry? entry)
+    {
+        var enabled = entry is not null && _typeOutEnabled && TypeOutSession.CanType(entry, entry.HasPayload);
+        TypeOutButton.IsEnabled = enabled;
+        TypeOutReason.Text = entry is null
+            ? (_typeOutEnabled ? "Select an eligible text entry." : "Type-out is off.")
+            : enabled ? "Eligible and will be rechecked before every chunk." : entry.IsImage ? "Images and file entries cannot be typed." : TypeOutText.Validate(entry.TryGetText()) ?? "This entry cannot be typed.";
     }
 
     private static FrameworkElement BuildRow(ClipEntry e)
@@ -292,6 +320,11 @@ public partial class PickerWindow : Window
         e.Handled = true;
     }
 
+    private void OpenSelectedTypeOut()
+    {
+        if (TypeOutButton.IsEnabled) OnTypeOutClick(TypeOutButton, new RoutedEventArgs());
+    }
+
     private void OnPreviewActivate(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount < 2)
@@ -345,6 +378,3 @@ public partial class PickerWindow : Window
         base.OnClosed(e);
     }
 }
-
-
-

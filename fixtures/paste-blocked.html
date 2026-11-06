@@ -1,0 +1,17 @@
+﻿<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Generic paste-blocked typing fixture</title>
+<style>body{font-family:Consolas,monospace;background:#20242d;color:#e5e9f6;padding:2rem}textarea{width:100%;height:22rem;background:#2e323f;border:1px solid #c0c9d4;color:#e5e9f6;font:1rem Consolas;tab-size:4}p{color:#abafbc}</style>
+<h1>Paste-blocked generic text target</h1>
+<p>No network requests, libraries, or clipboard access. Normal keyboard input is accepted; paste events are blocked.</p>
+<textarea id="target" spellcheck="false" aria-label="Type-out test destination"></textarea>
+<p id="status">Paste has not been attempted.</p>
+<script>
+const target = document.getElementById('target');
+target.addEventListener('paste', event => { event.preventDefault(); document.getElementById('status').textContent = 'paste prevented (expected);'; });
+target.addEventListener('beforeinput', event => {
+ if (event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop') {
+  event.preventDefault(); document.getElementById('status').textContent = 'paste/drop input prevented (expected);';
+ }
+});
+</script>
+</html>

@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Sideclip.Native;
@@ -21,6 +21,9 @@ internal static class NativeMethods
 
     public const int HotkeyPicker = 1;
     public const int HotkeyScreenshot = 2;
+    public const int HotkeyTypeOutGo = 3;
+    public const int HotkeyEscape = 4;
+    public const int VkEscape = 0x1B;
 
     public const uint InputKeyboard = 1;
     public const uint KeyeventfExtendedkey = 0x0001;
