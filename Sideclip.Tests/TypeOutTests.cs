@@ -12,19 +12,21 @@ public sealed class TypeOutTests
     public void TestFidelityFixturesAreExplicitUnicode()
     {
         var bmp = "caf\u00E9";
-        var emoji = "\uD83D\uDE00";
+        var emoji = "\uD83D\uDE0A";
         var source = "plain\r\nnext\tend " + emoji;
         Assert.Equal(0x00E9, bmp[^1]);
         Assert.Equal(2, emoji.Length);
+        Assert.Equal(0xD83D, (int)emoji[0]);
+        Assert.Equal(0xDE0A, (int)emoji[1]);
         Assert.Null(TypeOutText.Validate(bmp + " " + emoji));
         Assert.Equal("plain\rnext\tend " + emoji, TypeOutText.Normalize(source));
     }
     [Fact]
     public void Text_accepted_is_preserved_and_newlines_normalized()
     {
-        var text = "one\r\ntwo\nthree\rfour\t\"separator\" café 😊";
+        var text = "one\r\ntwo\nthree\rfour\t\"separator\" caf\u00E9 \uD83D\uDE0A";
         Assert.Null(TypeOutText.Validate(text));
-        Assert.Equal("one\rtwo\rthree\rfour\t\"separator\" café 😊", TypeOutText.Normalize(text));
+        Assert.Equal("one\rtwo\rthree\rfour\t\"separator\" caf\u00E9 \uD83D\uDE0A", TypeOutText.Normalize(text));
     }
 
     [Theory]
@@ -39,7 +41,7 @@ public sealed class TypeOutTests
     {
         Assert.NotNull(TypeOutText.Validate("bad\uD800"));
         Assert.NotNull(TypeOutText.Validate("bad\uDC00"));
-        Assert.Null(TypeOutText.Validate("valid\uD83D\uDE00"));
+        Assert.Null(TypeOutText.Validate("valid\uD83D\uDE0A"));
     }
 
     [Fact]
@@ -50,7 +52,7 @@ public sealed class TypeOutTests
     {
         var sink = new FakeSink();
         var focus = new FakeFocus(42);
-        var result = await Run("plain\r\nnext\tend 😊", sink, focus, chunkSize: 4);
+        var result = await Run("plain\r\nnext\tend \uD83D\uDE0A", sink, focus, chunkSize: 4);
         Assert.Equal(TypeOutStatus.Completed, result.Status);
         Assert.Equal("plain\rnext\tend 😊", sink.Text);
         Assert.True(sink.Chunks.Count > 1);
