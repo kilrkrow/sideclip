@@ -111,14 +111,22 @@ public sealed class TypeOutRunner
         while (offset < normalized.Length)
         {
             if (token.IsCancellationRequested) return Result(TypeOutStatus.Cancelled, "Type-out cancelled.", sentUnits, normalized.Length);
-            if (!sourceIsLive()) return Result(TypeOutStatus.SourceGone, "Type-out stopped because the entry was deleted, expired, or cleared.", sentUnits, normalized.Length);
+            if (!sourceIsLive()) return token.IsCancellationRequested
+                ? Result(TypeOutStatus.Cancelled, "Type-out cancelled.", sentUnits, normalized.Length)
+                : Result(TypeOutStatus.SourceGone, "Type-out stopped because the entry was deleted, expired, or cleared.", sentUnits, normalized.Length);
+            if (token.IsCancellationRequested) return Result(TypeOutStatus.Cancelled, "Type-out cancelled.", sentUnits, normalized.Length);
             var foreground = _focus.ForegroundWindow;
             if (foreground == IntPtr.Zero || foreground != target) return Result(TypeOutStatus.FocusChanged, "Type-out stopped because focus changed.", sentUnits, normalized.Length);
+            if (token.IsCancellationRequested) return Result(TypeOutStatus.Cancelled, "Type-out cancelled.", sentUnits, normalized.Length);
 
             // A surrogate pair stays within a chunk. SendInput sends this
             // bounded batch atomically; each code unit has a down and up event.
             var count = Math.Min(_chunkSize, normalized.Length - offset);
-            if (offset + count < normalized.Length && char.IsHighSurrogate(normalized[offset + count - 1])) count--;
+            if (offset + count < normalized.Length && char.IsHighSurrogate(normalized[offset + count - 1])
+                && char.IsLowSurrogate(normalized[offset + count]))
+                count--;
+            if (count <= 0)
+                return new(TypeOutStatus.PartialSend, "The typing chunk size cannot hold a surrogate pair. No text was sent.");
             var chunk = normalized.Substring(offset, count);
             var sentEvents = _sink.Send(chunk);
             var acceptedUnits = Math.Clamp(sentEvents / 2, 0, count);

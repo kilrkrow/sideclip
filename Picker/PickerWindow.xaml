@@ -35,10 +35,10 @@
                         <LineBreak />
                         <Run x:Name="TypeOutReason" Text="Images cannot be typed." Foreground="#ABAFBC" />
                         <LineBreak />
-                        <Run Text="Select Arm for type-out, target the destination, then press the Go hotkey. Esc cancels. Never uses clipboard." Foreground="#ABAFBC" />
+                        <Run Text="Press Ctrl+T or Arm for type-out, target the destination, then press the Go hotkey. Esc cancels. Never uses clipboard." Foreground="#ABAFBC" />
                     </TextBlock>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
-                        <Button x:Name="TypeOutButton" Content="Arm for type-out" ToolTip="Select Arm, target the destination, then use Go."
+                        <Button x:Name="TypeOutButton" Content="Arm for type-out (Ctrl+T)" ToolTip="Ctrl+T or Arm: target the destination, then use Go."
                                 Padding="14,6" Margin="0,0,8,0"
                                 Background="#3A414D" Foreground="#E5E9F6" BorderBrush="#C0C9D4"
                                 Click="OnTypeOutClick" />

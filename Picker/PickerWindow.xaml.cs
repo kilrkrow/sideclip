@@ -7,6 +7,21 @@ using Sideclip.TypeOut;
 
 namespace Sideclip.Picker;
 
+internal enum PickerCommitAction { None, Paste, Copy, ArmTypeOut }
+
+internal static class PickerKeyMapping
+{
+    public static PickerCommitAction Resolve(Key key, ModifierKeys modifiers, ClipEntry? entry, bool typeOutEnabled)
+    {
+        if (key == Key.Enter)
+            return (modifiers & ModifierKeys.Shift) != 0 ? PickerCommitAction.Copy : PickerCommitAction.Paste;
+        if (key == Key.T && (modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows | ModifierKeys.Shift)) == ModifierKeys.Control
+            && entry is not null && typeOutEnabled && TypeOutSession.CanType(entry, entry.HasPayload))
+            return PickerCommitAction.ArmTypeOut;
+        return PickerCommitAction.None;
+    }
+}
+
 public partial class PickerWindow : Window
 {
     private readonly List<ClipEntry> _all = new();
@@ -247,12 +262,20 @@ public partial class PickerWindow : Window
             return;
         }
 
-        if (e.Key == Key.Enter)
+        switch (PickerKeyMapping.Resolve(e.Key, Keyboard.Modifiers, Selected(), _typeOutEnabled))
         {
-            var paste = (Keyboard.Modifiers & ModifierKeys.Shift) == 0;
-            Commit(paste);
-            e.Handled = true;
-            return;
+            case PickerCommitAction.Paste:
+                Commit(paste: true);
+                e.Handled = true;
+                return;
+            case PickerCommitAction.Copy:
+                Commit(paste: false);
+                e.Handled = true;
+                return;
+            case PickerCommitAction.ArmTypeOut:
+                OpenSelectedTypeOut();
+                e.Handled = true;
+                return;
         }
 
         if (e.Key == Key.Delete && (Keyboard.Modifiers & ModifierKeys.Shift) != 0)
@@ -322,7 +345,7 @@ public partial class PickerWindow : Window
 
     private void OpenSelectedTypeOut()
     {
-        if (TypeOutButton.IsEnabled) OnTypeOutClick(TypeOutButton, new RoutedEventArgs());
+        OnTypeOutClick(TypeOutButton, new RoutedEventArgs());
     }
 
     private void OnPreviewActivate(object sender, MouseButtonEventArgs e)

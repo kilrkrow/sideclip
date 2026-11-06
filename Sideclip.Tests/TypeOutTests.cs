@@ -54,9 +54,9 @@ public sealed class TypeOutTests
         var focus = new FakeFocus(42);
         var result = await Run("plain\r\nnext\tend \uD83D\uDE0A", sink, focus, chunkSize: 4);
         Assert.Equal(TypeOutStatus.Completed, result.Status);
-        Assert.Equal("plain\rnext\tend 😊", sink.Text);
+        Assert.Equal("plain\rnext\tend \uD83D\uDE0A", sink.Text);
         Assert.True(sink.Chunks.Count > 1);
-        Assert.All(sink.Chunks, chunk => Assert.True(chunk.Length <= 16));
+        Assert.All(sink.Chunks, chunk => Assert.InRange(chunk.Length, 1, 4));
         Assert.DoesNotContain(sink.Chunks, chunk => char.IsHighSurrogate(chunk[^1]) || char.IsLowSurrogate(chunk[0]));
     }
 
@@ -116,9 +116,9 @@ public sealed class TypeOutTests
     public async Task Partial_send_is_reported_as_partial()
     {
         var sink = new FakeSink { ToAccept = 9 };
-        var result = await Run("ab😊cd", sink, new FakeFocus(42), 6);
+        var result = await Run("ab\uD83D\uDE0Acd", sink, new FakeFocus(42), 6);
         Assert.Equal(TypeOutStatus.PartialSend, result.Status);
-        Assert.Equal("ab😊cd", sink.Text);
+        Assert.Equal("ab\uD83D\uDE0Acd", sink.Text);
         Assert.Contains("may have been inserted", result.Message);
         Assert.DoesNotContain("finished", result.Message);
     }
@@ -202,7 +202,7 @@ public sealed class TypeOutTests
     public async Task Session_requires_explicit_go_and_only_runs_once()
     {
         var sink = new FakeSink();
-        var entry = new ClipEntry("abc 😊", false, "test");
+        var entry = new ClipEntry("abc \uD83D\uDE0A", false, "test");
         var session = MakeSession(entry, sink, out var active, out _);
         session.SetEnabled(true);
         Assert.True(session.Arm(entry));
@@ -211,8 +211,10 @@ public sealed class TypeOutTests
         session.Go(7);
         session.Go(7);
         await Pump(() => !session.HasEntry);
-        Assert.Equal("abc 😊", sink.Text);
+        Assert.Equal("abc \uD83D\uDE0A", sink.Text);
         Assert.Equal(3, sink.Chunks.Count);
+        Assert.Equal("ab", sink.Chunks[0]);
+        Assert.All(sink.Chunks, chunk => Assert.False(char.IsHighSurrogate(chunk[^1]) || char.IsLowSurrogate(chunk[0])));
         Assert.Equal(7, sink.Delay);
         Assert.False(active.Value);
         session.Cancel();

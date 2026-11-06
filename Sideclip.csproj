@@ -23,6 +23,8 @@
     <Description>Windows tray clipboard that sits beside Win+V.</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sideclip.Tests" />
+  </ItemGroup>
+
 </Project>
-
-

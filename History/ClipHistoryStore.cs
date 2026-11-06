@@ -10,8 +10,8 @@ namespace Sideclip.History;
 /// <summary>
 /// In-memory history. Secrets are never persisted. TTL wipes one secret row
 /// and optionally clears the live clipboard if that row is still latest.
-/// Picker sees only non-secrets. TTL Off leaves secrets in memory until
-/// expiry is turned back on.
+/// Picker includes live secrets; wiped/expired secrets are never eligible.
+/// TTL Off leaves live secrets in memory until expiry is turned on.
 /// </summary>
 public sealed class ClipHistoryStore : IDisposable
 {
@@ -27,7 +27,7 @@ public sealed class ClipHistoryStore : IDisposable
 
     public ObservableCollection<ClipEntryView> Rows { get; } = new();
 
-    public event Action<ClipEntry>? EntryInvalidated = _ => { };
+    public event Action<ClipEntry>? EntryInvalidated;
     public TimeSpan Ttl => _ttl;
     public bool TtlEnabled => _ttlEnabled;
 
@@ -129,6 +129,7 @@ public sealed class ClipHistoryStore : IDisposable
             Latest = _entries.Count > 0 ? _entries[0] : null;
 
         entry.WipePayload();
+        EntryInvalidated?.Invoke(entry);
         if (!entry.IsSecret)
             PersistNonSecrets();
     }
@@ -142,6 +143,7 @@ public sealed class ClipHistoryStore : IDisposable
                 var e = _entries[i];
                 _entries.RemoveAt(i);
                 e.WipePayload();
+                EntryInvalidated?.Invoke(e);
             }
         }
 
@@ -156,6 +158,7 @@ public sealed class ClipHistoryStore : IDisposable
 
     public void ClearAll()
     {
+        var invalidated = _entries.ToArray();
         foreach (var timer in _timers)
             timer.Stop();
         _timers.Clear();
@@ -165,6 +168,8 @@ public sealed class ClipHistoryStore : IDisposable
         _entries.Clear();
         Rows.Clear();
         Latest = null;
+        foreach (var e in invalidated)
+            EntryInvalidated?.Invoke(e);
         PersistNonSecrets();
     }
 
@@ -181,6 +186,7 @@ public sealed class ClipHistoryStore : IDisposable
         {
             timer.Stop();
             _timers.Remove(timer);
+            // RemoveEntry raises EntryInvalidated for TTL expiry too.
             ExpireSecret(entry);
         };
         _timers.Add(timer);
