@@ -150,6 +150,37 @@ public sealed class TypeOutWiringTests
         Assert.All(sink.Chunks, chunk => Assert.False(char.IsHighSurrogate(chunk[^1]) || char.IsLowSurrogate(chunk[0])));
     }
 
+
+    [Fact]
+    public void Picker_selection_refreshes_type_out_eligibility()
+    {
+        RunSta(() =>
+        {
+            var entry = new ClipEntry("eligible text", false, "test");
+            var picker = new PickerWindow(new[] { entry }, IntPtr.Zero, (_, _) => { }, true);
+            var method = typeof(PickerWindow).GetMethod("OnSelectionChanged", BindingFlags.Instance | BindingFlags.NonPublic);
+            method!.Invoke(picker, new object?[] { null, null });
+            var button = (System.Windows.Controls.Button)picker.FindName("TypeOutButton");
+            var reason = (System.Windows.Documents.Run)picker.FindName("TypeOutReason");
+            Assert.True(button.IsEnabled);
+            Assert.Contains("Eligible", reason.Text);
+        });
+    }
+
+    [Fact]
+    public void Win32_sink_sends_enter_and_tab_in_text_order()
+    {
+        var segments = Win32InputSink.Segments("a\tb\rc\r\r\t\uD83D\uDE0Ad");
+        Assert.Equal(new[]
+        {
+            (false, "a"), (true, "\t"), (false, "b"), (true, "\r"), (false, "c"),
+            (true, "\r"), (true, "\r"), (true, "\t"), (false, "\uD83D\uDE0Ad"),
+        }, segments);
+        Assert.Equal("a\tb\rc\r\r\t\uD83D\uDE0Ad", string.Concat(segments.Select(s => s.Text)));
+        Assert.Empty(Win32InputSink.Segments(""));
+        Assert.Equal(new[] { (false, "plain") }, Win32InputSink.Segments("plain"));
+    }
+
     private static void RunSta(Action test)
     {
         Exception? failure = null;

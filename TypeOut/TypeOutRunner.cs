@@ -20,13 +20,53 @@ internal sealed class Win32InputSink : IInputSink, IFocusProbe
 
     public int Send(string text)
     {
-        var inputs = new NativeMethods.INPUT[text.Length * 2];
+        // RichEdit and browser textarea editors discard Unicode CR/Tab packets,
+        // so CR and Tab go as ordinary VK key presses. Every segment is its own
+        // SendInput call, in text order: mixing VK and Unicode packets in one
+        // call can leave only a key-up with no visible key-down.
+        var accepted = 0;
+        foreach (var segment in Segments(text))
+        {
+            var inputs = new NativeMethods.INPUT[segment.Text.Length * 2];
+            for (var i = 0; i < segment.Text.Length; i++)
+            {
+                var c = segment.Text[i];
+                if (segment.IsKey)
+                {
+                    var vk = c == '\r' ? (ushort)0x0D : (ushort)0x09;
+                    inputs[i * 2] = Key(vk, 0, 0);
+                    inputs[i * 2 + 1] = Key(vk, 0, NativeMethods.KeyeventfKeyup);
+                }
+                else
+                {
+                    inputs[i * 2] = Key(0, c, NativeMethods.KeyeventfUnicode);
+                    inputs[i * 2 + 1] = Key(0, c, NativeMethods.KeyeventfUnicode | NativeMethods.KeyeventfKeyup);
+                }
+            }
+            var sent = (int)NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+            accepted += sent;
+            if (sent != inputs.Length) return accepted;
+        }
+        return accepted;
+    }
+
+    /// <summary>
+    /// Splits a chunk into ordered runs: CR/Tab become key-press segments (one
+    /// per character), everything else stays in Unicode-packet runs.
+    /// </summary>
+    internal static IReadOnlyList<(bool IsKey, string Text)> Segments(string text)
+    {
+        var result = new List<(bool, string)>();
+        var run = 0;
         for (var i = 0; i < text.Length; i++)
         {
-            inputs[i * 2] = Key(0, text[i], NativeMethods.KeyeventfUnicode);
-            inputs[i * 2 + 1] = Key(0, text[i], NativeMethods.KeyeventfUnicode | NativeMethods.KeyeventfKeyup);
+            if (text[i] is not ('\r' or '\t')) continue;
+            if (i > run) result.Add((false, text[run..i]));
+            result.Add((true, text[i].ToString()));
+            run = i + 1;
         }
-        return (int)NativeMethods.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<NativeMethods.INPUT>());
+        if (run < text.Length) result.Add((false, text[run..]));
+        return result;
     }
 
     private static NativeMethods.INPUT Key(ushort vk, int scan, uint flags) => new()

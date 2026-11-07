@@ -26,7 +26,7 @@ Select a text entry, click `Arm for type-out`, choose a destination, then press 
 
 A bounded batch (at most 16 UTF-16 code units, never splitting a surrogate pair) is sent by `KEYEVENTF_UNICODE`, with `wVk == 0`, down/up per code unit, on a background task. Before each batch it checks cancellation, entry availability/payload, and the exact foreground HWND captured at Go. Entry deletion, clearing, or expiry cancels an armed/running selection. History's own TTL timers are the only TTL clocks. A payload array is cleared after the job; no clipboard, history, CLI, IPC, disk, log, or diagnostic payload copies are added.
 
-CRLF/LF are normalized to CR; tabs remain tabs and CR remains CR, inserted using Unicode packets, not virtual Enter/Tab. This makes multi-line edits predictable but target keyboard commands are not macros. NUL, unsupported C0 controls and malformed UTF-16 are rejected before sending. Maximum selected text is 1,000,000 UTF-16 units.
+CRLF/LF are normalized to Enter keystrokes and tabs to Tab keystrokes. The initial Unicode-only implementation dropped CR/Tab in Notepad; real targets require these key packets. All other text uses Unicode packets. This makes multi-line edits predictable but target keyboard commands are not macros. NUL, unsupported C0 controls and malformed UTF-16 are rejected before sending. Maximum selected text is 1,000,000 UTF-16 units.
 
 ## Required manual UI evidence batch (pending)
 

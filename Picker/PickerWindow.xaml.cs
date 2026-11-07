@@ -46,7 +46,7 @@ public partial class PickerWindow : Window
         }
 
         ApplyFilter();
-        Loaded += (_, _) => { Activate(); List.Focus(); };
+        Loaded += (_, _) => { Activate(); List.Focus(); RefreshTypeOut(Selected()); };
     }
 
     private void ApplyFilter()
@@ -154,8 +154,11 @@ public partial class PickerWindow : Window
         return grid;
     }
 
-    private void OnSelectionChanged(object sender, SelectionChangedEventArgs e) =>
+    private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
         ShowPreview(Selected());
+        RefreshTypeOut(Selected());
+    }
 
     private void ShowPreview(ClipEntry? e)
     {
