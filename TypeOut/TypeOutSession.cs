@@ -19,6 +19,7 @@ internal sealed class TypeOutSession : IDisposable
     private Task<TypeOutResult>? _running;
     private bool _enabled;
     private bool _disposed;
+    private string? _stopReason;
 
 
     public bool HasEntry => _entry is not null;
@@ -54,7 +55,10 @@ internal sealed class TypeOutSession : IDisposable
         if (!RegisterCancellation()) return false;
         _armedPayload = entry.TryGetText()!.ToCharArray();
         _entry = entry;
-        _report("Armed: target the destination, then press Go. Esc cancels.");
+        _stopReason = null;
+        _report(TypeOutText.HasTargetKeys(entry.TryGetText())
+            ? TypeOutText.ArmedTargetKeyWarning
+            : "Armed: target the destination, then press Go. Esc cancels.");
         return true;
     }
 
@@ -123,14 +127,49 @@ internal sealed class TypeOutSession : IDisposable
     {
         var result = await task.ConfigureAwait(true);
         if (_disposed || !ReferenceEquals(_running, task)) return;
+        var stopReason = _stopReason;
+        _stopReason = null;
         ResetEntry();
-        _report(result.Message);
+        _report(WithStopReason(result, stopReason).Message);
     }
 
     public void EntryChanged(ClipEntry changed)
     {
         if (ReferenceEquals(changed, _entry))
-            Cancel("Type-out stopped because the entry was deleted, expired, or cleared.");
+            StopForSource("Type-out stopped because the entry was deleted, expired, or cleared.");
+    }
+
+    public void EntryChanged(ClipEntry changed, EntryInvalidationReason reason)
+    {
+        if (ReferenceEquals(changed, _entry))
+            StopForSource(StopMessage(reason));
+    }
+
+    internal static string StopMessage(EntryInvalidationReason reason) => reason switch
+    {
+        EntryInvalidationReason.Expired => "Type-out stopped because the entry expired (secret TTL).",
+        EntryInvalidationReason.Cleared => "Type-out stopped because history was cleared.",
+        _ => "Type-out stopped because the entry was deleted."
+    };
+
+    private void StopForSource(string message)
+    {
+        if (_running is not null) _stopReason = message;
+        Cancel(message);
+    }
+
+    /// <summary>
+    /// A source invalidation cancels the running job's token; keep its reason
+    /// instead of reporting a generic cancel.
+    /// </summary>
+    internal static TypeOutResult WithStopReason(TypeOutResult result, string? stopReason)
+    {
+        const string cancelled = "Type-out cancelled.";
+        if (stopReason is null || result.Status is not (TypeOutStatus.Cancelled or TypeOutStatus.SourceGone)) return result;
+        var message = result.Message;
+        foreach (var prefix in new[] { cancelled, "Type-out stopped because the entry was deleted, expired, or cleared." })
+            if (message.StartsWith(prefix, StringComparison.Ordinal)) { message = stopReason + message[prefix.Length..]; break; }
+        return new TypeOutResult(TypeOutStatus.SourceGone, message);
     }
 
     public void Cancel(string? reason = null)

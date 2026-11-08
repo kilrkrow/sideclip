@@ -116,7 +116,7 @@ public partial class PickerWindow : Window
         TypeOutButton.IsEnabled = enabled;
         TypeOutReason.Text = entry is null
             ? (_typeOutEnabled ? "Select an eligible text entry." : "Type-out is off.")
-            : enabled ? "Eligible and will be rechecked before every chunk." : entry.IsImage ? "Images and file entries cannot be typed." : TypeOutText.Validate(entry.TryGetText()) ?? "This entry cannot be typed.";
+            : enabled ? (TypeOutText.HasTargetKeys(entry.TryGetText()) ? "Eligible. " + TypeOutText.TargetKeyWarning : "Eligible and will be rechecked before every chunk.") : entry.IsImage ? "Images and file entries cannot be typed." : TypeOutText.Validate(entry.TryGetText()) ?? "This entry cannot be typed.";
     }
 
     private static FrameworkElement BuildRow(ClipEntry e)

@@ -28,6 +28,10 @@ public sealed class ClipHistoryStore : IDisposable
     public ObservableCollection<ClipEntryView> Rows { get; } = new();
 
     public event Action<ClipEntry>? EntryInvalidated;
+
+    // Same events as EntryInvalidated, with the reason, so status text can say
+    // "expired" instead of a generic cancel.
+    public event Action<ClipEntry, EntryInvalidationReason>? EntryInvalidatedWithReason;
     public TimeSpan Ttl => _ttl;
     public bool TtlEnabled => _ttlEnabled;
 
@@ -116,7 +120,9 @@ public sealed class ClipHistoryStore : IDisposable
         return entry;
     }
 
-    public void RemoveEntry(ClipEntry entry)
+    public void RemoveEntry(ClipEntry entry) => RemoveEntry(entry, EntryInvalidationReason.Deleted);
+
+    private void RemoveEntry(ClipEntry entry, EntryInvalidationReason reason)
     {
         _entries.Remove(entry);
         for (var i = Rows.Count - 1; i >= 0; i--)
@@ -129,7 +135,7 @@ public sealed class ClipHistoryStore : IDisposable
             Latest = _entries.Count > 0 ? _entries[0] : null;
 
         entry.WipePayload();
-        EntryInvalidated?.Invoke(entry);
+        Invalidated(entry, reason);
         if (!entry.IsSecret)
             PersistNonSecrets();
     }
@@ -143,7 +149,7 @@ public sealed class ClipHistoryStore : IDisposable
                 var e = _entries[i];
                 _entries.RemoveAt(i);
                 e.WipePayload();
-                EntryInvalidated?.Invoke(e);
+                Invalidated(e, EntryInvalidationReason.Cleared);
             }
         }
 
@@ -169,7 +175,7 @@ public sealed class ClipHistoryStore : IDisposable
         Rows.Clear();
         Latest = null;
         foreach (var e in invalidated)
-            EntryInvalidated?.Invoke(e);
+            Invalidated(e, EntryInvalidationReason.Cleared);
         PersistNonSecrets();
     }
 
@@ -196,7 +202,13 @@ public sealed class ClipHistoryStore : IDisposable
     private void ExpireSecret(ClipEntry entry)
     {
         _onSecretExpired(entry);
-        RemoveEntry(entry);
+        RemoveEntry(entry, EntryInvalidationReason.Expired);
+    }
+
+    private void Invalidated(ClipEntry entry, EntryInvalidationReason reason)
+    {
+        EntryInvalidated?.Invoke(entry);
+        EntryInvalidatedWithReason?.Invoke(entry, reason);
     }
 
     public void TickViews()
@@ -387,3 +399,5 @@ public sealed class ClipEntryView : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Preview)));
     }
 }
+
+public enum EntryInvalidationReason { Deleted, Cleared, Expired }

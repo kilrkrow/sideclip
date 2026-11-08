@@ -53,6 +53,24 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct GUITHREADINFO
+    {
+        public int cbSize;
+        public int flags;
+        public IntPtr hwndActive;
+        public IntPtr hwndFocus;
+        public IntPtr hwndCapture;
+        public IntPtr hwndMenuOwner;
+        public IntPtr hwndMoveSize;
+        public IntPtr hwndCaret;
+        public int rcLeft, rcTop, rcRight, rcBottom;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgui);
+
     [DllImport("kernel32.dll")]
     public static extern uint GetCurrentThreadId();
 

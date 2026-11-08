@@ -82,7 +82,7 @@ public partial class App : System.Windows.Application
             deactivateHotkeys: () => _hotkeys?.SetTypeOutActive(false, _settings.TypeOutGoHotkey),
             postToUi: action => Dispatcher.BeginInvoke(action));
         _typeOut.SetEnabled(_settings.TypeOutEnabled);
-        _history.EntryInvalidated += entry => _typeOut.EntryChanged(entry);
+        _history.EntryInvalidatedWithReason += (entry, reason) => _typeOut.EntryChanged(entry, reason);
 
         _watcher.ClipCaptured += (text, secret, owner) =>
         {
