@@ -76,7 +76,7 @@ Record SHA256 hashes of `settings.json`, `history.json`, image temp files, and a
 
 ## Target keys: Tab and Enter (r2)
 
-Tab (0x09) and Enter (CR/LF normalized to CR, 0x0D) are sent as virtual-key presses so Notepad and other plain editors get real indentation and new lines. The target decides what those keys mean. Observed on JARVIS (Windows Server 2022, Microsoft Edge, `fixtures/paste-blocked.html` textarea, build 14b25c3): the entry `tab<Tab>here<LF>next` arrived as `tabe<LF>next`. Tab moved focus out of the textarea, part of the following text did not land in the field, and the old status still said `Type-out finished.` The same entry was exact in Notepad.
+Tab (0x09) and Enter (CR/LF normalized to CR, 0x0D) are sent as virtual-key presses so Notepad and other plain editors get real indentation and new lines. The target decides what those keys mean. Observed on JARVIS (Windows Server 2022, Microsoft Edge, `fixtures/paste-blocked.html` textarea, build 14b25c3): the entry `tab<Tab>here<LF>next` arrived as `tabe<LF>next`. Tab moved focus out of the textarea, part of the following text did not land in the field, and the old status still said `Type-out finished.` The same entry was exact in Notepad. The r2 rerun (build f065262) on the same fixture produced `tabhere<LF>next` with status `Type-out sent 13 of 13 keys (2 Tab/Enter). Insertion not verified.`; the Tab never reached the field.
 
 Behavior since r2:
 - The picker's eligibility line adds a warning when the selected entry has Tab or Enter/CR/LF: `Warning: contains Tab or Enter. They are sent as real key presses, so the target may treat them as navigation or submit (for example, Tab moves focus in browsers).`
@@ -84,6 +84,7 @@ Behavior since r2:
 - A finished job reports `Type-out sent N of N keys[ (K Tab/Enter)]. Insertion not verified.` Sideclip never claims verified insertion.
 - A chunk ends right after each Tab/Enter key, so the next chunk always rechecks the foreground first. Before each chunk, Sideclip compares the foreground thread's focused Win32 control (`GetGUIThreadInfo.hwndFocus`) with the one it saw at Go. If it changed, the job stops with `Type-out stopped because focus moved to another control.` This works at window/control level only. Browsers and other single-HWND apps keep one control, so DOM-level focus moves (the Edge case above) are not detected or prevented.
 - An expired, cleared or deleted source keeps its reason in the final status (for example `Type-out stopped because the entry expired (secret TTL).`) instead of a generic cancel.
+- Turning type-out off while armed reports `Type-out turned off. Nothing is armed.` (or `Type-out stopped because it was turned off.` while typing) and releases Go and Esc.
 - There is no clipboard fallback and no browser automation.
 
 ## Limitations / production comparison

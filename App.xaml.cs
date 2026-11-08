@@ -134,8 +134,8 @@ public partial class App : System.Windows.Application
         var oldGo = _settings.TypeOutGoHotkey;
         SettingsManager.Save(settings);
         _history?.SetTtl(TimeSpan.FromSeconds(settings.TtlSeconds), settings.TtlEnabled);
-        if (!settings.TypeOutEnabled || (_typeOut?.HasEntry == true && settings.TypeOutGoHotkey != oldGo))
-            _typeOut?.Cancel();
+        if (settings.TypeOutEnabled && _typeOut?.HasEntry == true && settings.TypeOutGoHotkey != oldGo)
+            _typeOut?.Cancel("Type-out cancelled because the Go hotkey changed.");
         _typeOut?.SetEnabled(settings.TypeOutEnabled);
         // Apply does not re-register the scoped Escape chord or its active Go.
         _hotkeys?.Apply(settings.PickerHotkey, settings.ScreenshotHotkey, settings.TypeOutGoHotkey, _typeOut?.HasEntry == true);

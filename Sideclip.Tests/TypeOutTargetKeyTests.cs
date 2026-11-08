@@ -174,6 +174,48 @@ public sealed class TypeOutTargetKeyTests
     }
 
     [Fact]
+    public void Turning_off_while_armed_replaces_the_armed_status_and_releases_hotkeys()
+    {
+        var reports = new List<string>();
+        var released = 0;
+        using var session = new TypeOutSession(e => e.HasPayload, reports.Add,
+            () => new TypeOutRunner(new TypeOutTests.FakeSink(), new TypeOutTests.FakeFocus(42)),
+            new TypeOutTests.FakeFocus(42), () => { }, action => action(), () => true, () => released++);
+        session.SetEnabled(true);
+        Assert.True(session.Arm(new ClipEntry("plain", false, "test")));
+        released = 0;
+        session.SetEnabled(false);
+        Assert.Equal(TypeOutSession.TurnedOffMessage, reports[^1]);
+        Assert.False(session.HasEntry);
+        Assert.True(released > 0, "Go/Esc hotkeys released");
+        var count = reports.Count;
+        session.SetEnabled(false);
+        Assert.Equal(count, reports.Count);
+    }
+
+    [Fact]
+    public void Turning_off_while_typing_keeps_the_off_reason()
+    {
+        RunSta(() =>
+        {
+            var reports = new ConcurrentQueue<string>();
+            var sink = new BlockingSink();
+            using var session = new TypeOutSession(e => e.HasPayload, reports.Enqueue,
+                () => new TypeOutRunner(sink, new TypeOutTests.FakeFocus(42), (ms, token) => sink.Delay(token), 2),
+                new TypeOutTests.FakeFocus(42), () => { }, action => action(), () => true, () => { });
+            session.SetEnabled(true);
+            Assert.True(session.Arm(new ClipEntry("abcd", false, "test")));
+            session.Go(10000);
+            Assert.True(sink.Started.Wait(TimeSpan.FromSeconds(2)), "delay entered");
+            session.SetEnabled(false);
+            const string expected = "Type-out stopped because it was turned off. About 2 of 4 UTF-16 units were sent.";
+            Assert.True(SpinWait.SpinUntil(() => !session.HasEntry && reports.Contains(expected), TimeSpan.FromSeconds(3)),
+                "final status: " + string.Join(" | ", reports));
+            Assert.Equal(new[] { "ab" }, sink.Text);
+        });
+    }
+
+    [Fact]
     public void Picker_buttons_use_dark_template_with_readable_disabled_state()
     {
         var xaml = File.ReadAllText(Path.Combine(SourceRoot, "Picker", "PickerWindow.xaml"));
