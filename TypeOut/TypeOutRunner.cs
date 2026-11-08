@@ -23,16 +23,15 @@ internal sealed class Win32InputSink : IInputSink, IFocusProbe
 {
     public IntPtr ForegroundWindow => NativeMethods.GetForegroundWindow();
 
-    public IntPtr FocusedControl
+    public IntPtr FocusedControl => FocusedControlOf(NativeMethods.GetForegroundWindow());
+
+    /// <summary>Keyboard-focus HWND of the thread that owns <paramref name="window"/>.</summary>
+    internal static IntPtr FocusedControlOf(IntPtr window)
     {
-        get
-        {
-            var foreground = NativeMethods.GetForegroundWindow();
-            if (foreground == IntPtr.Zero) return IntPtr.Zero;
-            var thread = NativeMethods.GetWindowThreadProcessId(foreground, out _);
-            var info = new NativeMethods.GUITHREADINFO { cbSize = Marshal.SizeOf<NativeMethods.GUITHREADINFO>() };
-            return thread != 0 && NativeMethods.GetGUIThreadInfo(thread, ref info) ? info.hwndFocus : IntPtr.Zero;
-        }
+        if (window == IntPtr.Zero) return IntPtr.Zero;
+        var thread = NativeMethods.GetWindowThreadProcessId(window, out _);
+        var info = new NativeMethods.GUITHREADINFO { cbSize = Marshal.SizeOf<NativeMethods.GUITHREADINFO>() };
+        return thread != 0 && NativeMethods.GetGUIThreadInfo(thread, ref info) ? info.hwndFocus : IntPtr.Zero;
     }
 
     public int Send(string text)
