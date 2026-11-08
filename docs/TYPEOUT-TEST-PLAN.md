@@ -84,7 +84,7 @@ Behavior since r2:
 - A finished job reports `Type-out sent N of N keys[ (K Tab/Enter)]. Insertion not verified.` Sideclip never claims verified insertion.
 - A chunk ends right after each Tab/Enter key, so the next chunk always rechecks the foreground first. Before each chunk, Sideclip compares the foreground thread's focused Win32 control (`GetGUIThreadInfo.hwndFocus`) with the one it saw at Go. If it changed, the job stops with `Type-out stopped because focus moved to another control.` This works at window/control level only. Browsers and other single-HWND apps keep one control, so DOM-level focus moves (the Edge case above) are not detected or prevented.
 - An expired, cleared or deleted source keeps its reason in the final status (for example `Type-out stopped because the entry expired (secret TTL).`) instead of a generic cancel.
-- Turning type-out off while armed reports `Type-out turned off. Nothing is armed.` (or `Type-out stopped because it was turned off.` while typing) and releases Go and Esc.
+- Turning type-out off while armed reports `Type-out turned off. Nothing is armed.` (or `Type-out stopped because it was turned off.` while typing) and releases Go and Esc. Turning it back on reports `Type-out idle. Arm an entry to start.`; saving Hotkeys... while armed reports `Type-out cancelled because hotkeys changed. Arm again.`
 - There is no clipboard fallback and no browser automation.
 
 ## Limitations / production comparison

@@ -76,11 +76,14 @@ internal sealed class TypeOutSession : IDisposable
 
     internal const string TurnedOffMessage = "Type-out turned off. Nothing is armed.";
     internal const string StoppedOffMessage = "Type-out stopped because it was turned off.";
+    internal const string IdleMessage = "Type-out idle. Arm an entry to start.";
+    internal const string HotkeysChangedMessage = "Type-out cancelled because hotkeys changed. Arm again.";
 
     public void SetEnabled(bool enabled)
     {
+        var wasEnabled = _enabled;
         _enabled = enabled;
-        if (enabled) return;
+        if (enabled) { if (!wasEnabled) _report(IdleMessage); return; }
         if (_entry is null) { Cancel(); return; }
         // Replace a stale "Armed" status instead of leaving it in the tray.
         if (_running is not null) { _stopReason = StoppedOffMessage; Cancel(StoppedOffMessage); }

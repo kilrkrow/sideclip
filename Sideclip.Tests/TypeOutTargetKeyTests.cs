@@ -191,6 +191,22 @@ public sealed class TypeOutTargetKeyTests
         var count = reports.Count;
         session.SetEnabled(false);
         Assert.Equal(count, reports.Count);
+        session.SetEnabled(true);
+        Assert.Equal(TypeOutSession.IdleMessage, reports[^1]);
+        count = reports.Count;
+        session.SetEnabled(true);
+        Assert.Equal(count, reports.Count);
+    }
+
+    [Fact]
+    public void Saving_hotkeys_while_armed_reports_why_the_job_was_dropped()
+    {
+        var source = File.ReadAllText(Path.Combine(SourceRoot, "App.xaml.cs"));
+        var open = source[source.IndexOf("private void OpenHotkeySettings()", StringComparison.Ordinal)..];
+        open = open[..open.IndexOf("OnSettingsChanged(_settings);", StringComparison.Ordinal)];
+        Assert.Contains("_typeOut?.Cancel(_typeOut.HasEntry ? TypeOutSession.HotkeysChangedMessage : null);", open);
+        Assert.All(TypeOutSession.HotkeysChangedMessage + TypeOutSession.IdleMessage + TypeOutSession.TurnedOffMessage, ch => Assert.InRange(ch, ' ', '~'));
+        Assert.True(TypeOutSession.HotkeysChangedMessage.Length <= 80);
     }
 
     [Fact]

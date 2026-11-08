@@ -150,7 +150,8 @@ public partial class App : System.Windows.Application
     {
         var form = new HotkeySettingsForm(_settings);
         if (form.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-        _typeOut?.Cancel();
+        // Applying hotkeys drops an armed job; say so instead of leaving "Armed" in the tray.
+        _typeOut?.Cancel(_typeOut.HasEntry ? TypeOutSession.HotkeysChangedMessage : null);
         _settings.PickerHotkey = form.PickerHotkey;
         _settings.ScreenshotHotkey = form.ScreenshotHotkey;
         _settings.TypeOutGoHotkey = form.TypeOutGoHotkey;
@@ -248,7 +249,7 @@ public partial class App : System.Windows.Application
     }
 
     private void GoTypeOut() => _typeOut?.Go(Math.Clamp(_settings.TypeOutDelayMs, 0, 250));
-    private void CancelTypeOut() => _typeOut?.Cancel("Type-out idle. Arm an entry to start.");
+    private void CancelTypeOut() => _typeOut?.Cancel(TypeOutSession.IdleMessage);
     private void ReportTypeOut(string message) => _tray?.RefreshTypeOutStatus(message);
 
     private void TypeScreenshotPath()
