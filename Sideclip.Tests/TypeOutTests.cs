@@ -188,11 +188,11 @@ public sealed class TypeOutTests
     }
 
     [Fact]
-    public void Disabled_session_cannot_arm_or_type()
+    public void Disabled_session_cannot_select_or_type()
     {
         var sink = new FakeSink();
         var session = MakeSession(new ClipEntry("hello", false, "test"), sink, out _, out _);
-        Assert.False(session.Arm(new ClipEntry("hello", false, "test")));
+        Assert.False(session.SelectCandidate(new ClipEntry("hello", false, "test")));
         session.Go(5);
         Assert.Empty(sink.Chunks);
         session.Dispose();
@@ -205,7 +205,7 @@ public sealed class TypeOutTests
         var entry = new ClipEntry("abc \uD83D\uDE0A", false, "test");
         var session = MakeSession(entry, sink, out var active, out _);
         session.SetEnabled(true);
-        Assert.True(session.Arm(entry));
+        Assert.True(session.SelectCandidate(entry));
         Assert.True(active.Value);
         Assert.Empty(sink.Chunks);
         session.Go(7);
@@ -222,7 +222,7 @@ public sealed class TypeOutTests
     }
 
     [Fact]
-    public void Failed_hotkey_registration_never_arms()
+    public void Pending_Esc_collision_keeps_identity_but_refuses_unsafe_execution()
     {
         var sink = new FakeSink();
         var entry = new ClipEntry("abc", false, "test");
@@ -231,10 +231,14 @@ public sealed class TypeOutTests
             () => new TypeOutRunner(sink, new FakeFocus(42)), new FakeFocus(42), () => { }, action => action(),
             () => false, () => { });
         session.SetEnabled(true);
-        Assert.False(session.Arm(entry));
+        Assert.True(session.SelectCandidate(entry));
+        Assert.True(session.HasEntry);
+        Assert.Contains("Pending Esc unavailable", messages[^1]);
+        session.Go(0);
         Assert.False(session.HasEntry);
-        Assert.Contains(messages, message => message.Contains("could not be registered"));
-    }
+        Assert.Empty(sink.Chunks);
+        Assert.Contains("Esc cancellation is unavailable", messages[^1]);
+        session.Dispose();    }
 
     [Fact]
     public async Task Runner_revalidates_malformed_payload()
@@ -248,7 +252,7 @@ public sealed class TypeOutTests
     }
 
     [Fact]
-    public void Entry_image_empty_file_and_secret_wipe_cannot_arm()
+    public void Entry_image_empty_file_and_secret_wipe_cannot_select()
     {
         var normal = new ClipEntry("abc", false, "test");
         Assert.False(TypeOutSession.CanType(new ClipEntry("", false, "test"), true));
@@ -266,7 +270,7 @@ public sealed class TypeOutTests
         var entry = new ClipEntry("abc", true, "test");
         var session = MakeSession(entry, sink, out _, out var messages);
         session.SetEnabled(true);
-        Assert.True(session.Arm(entry));
+        Assert.True(session.SelectCandidate(entry));
         entry.WipePayload();
         session.EntryChanged(entry);
         session.Cancel();
@@ -285,7 +289,7 @@ public sealed class TypeOutTests
         var entry = new ClipEntry("not-a-real-secret", true, "test");
         var session = MakeSession(entry, sink, out _, out _);
         session.SetEnabled(true);
-        session.Arm(entry);
+        session.SelectCandidate(entry);
         await Task.Delay(40);
         session.Go(0);
         await Pump(() => !session.HasEntry);

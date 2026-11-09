@@ -128,15 +128,15 @@ public static class TypeOutText
     public static string? ValidateEntryBuffer(char[] text) => Validate(new string(text));
 
     /// <summary>
-    /// Shown before arming/sending an entry that contains Tab or a line break.
+    /// Shown before selecting/sending an entry that contains Tab or a line break.
     /// Those are sent as real key presses, which the target may treat as
     /// navigation or submit rather than text.
     /// </summary>
     public const string TargetKeyWarning =
         "Warning: contains Tab or Enter. They are sent as real key presses, so the target may treat them as navigation or submit (for example, Tab moves focus in browsers).";
 
-    public const string ArmedTargetKeyWarning =
-        "Armed. Tab/Enter are real keys; may move focus or submit. Go types, Esc cancels.";
+    public const string SelectedTargetKeyWarning =
+        "Selected. Tab/Enter may move focus or submit. Shortcut types; Esc cancels.";
 
     public static bool HasTargetKeys(string? text) =>
         !string.IsNullOrEmpty(text) && text.AsSpan().IndexOfAny('\t', '\r', '\n') >= 0;

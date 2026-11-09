@@ -12,7 +12,7 @@ internal sealed class TrayService : IDisposable
     private readonly Action<AppSettings> _onSettingsChanged;
     private readonly ToolStripMenuItem _openPickerItem;
     private readonly ToolStripMenuItem _ttlMenu;
-    private readonly TrayMenuModel _typeOut;
+    private readonly TrayMenuModel _configuration;
     private readonly ContextMenuStrip _menu;
 
     public event Action? OpenPicker;
@@ -20,21 +20,19 @@ internal sealed class TrayService : IDisposable
     public event Action? ToggleDebug;
 #pragma warning restore CS0067
     public event Action? ExitApp;
-    public event Action? EditHotkeys;
+    public event Action? OpenSettings;
     public event Action? ClearHistory;
 
     public TrayService(AppSettings settings, Action<AppSettings> onSettingsChanged)
     {
         _settings = settings;
         _onSettingsChanged = onSettingsChanged;
-        _typeOut = new TrayMenuModel(settings, onSettingsChanged);
-        _typeOut.AttachGoCancel(() => GoRequested?.Invoke(), () => CancelRequested?.Invoke());
+        _configuration = new TrayMenuModel(() => OpenSettings?.Invoke());
 
         _menu = new ContextMenuStrip();
         _openPickerItem = new ToolStripMenuItem(OpenLabel());
         _openPickerItem.Click += (_, _) => OpenPicker?.Invoke();
         _menu.Items.Add(_openPickerItem);
-        _menu.Items.Add("Hotkeys...", null, (_, _) => EditHotkeys?.Invoke());
         _menu.Items.Add("Clear history", null, (_, _) => ClearHistory?.Invoke());
 #if DEBUG
         var debug = new ToolStripMenuItem("Debug window") { Checked = settings.ShowDebugWindow, CheckOnClick = true };
@@ -60,7 +58,7 @@ internal sealed class TrayService : IDisposable
             _ttlMenu.DropDownItems.Add(item);
         }
         RefreshTtlChecks();
-        _typeOut.Build(_menu, _ttlMenu);
+        _configuration.Build(_menu, _ttlMenu);
         _menu.Items.Add(new ToolStripSeparator());
         _menu.Items.Add("About Sideclip...", null, (_, _) => ShowAbout());
         _menu.Items.Add("Exit", null, (_, _) => ExitApp?.Invoke());
@@ -68,17 +66,12 @@ internal sealed class TrayService : IDisposable
         _icon = new NotifyIcon
         {
             Text = TrayTip(),
-            Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? string.Empty) ?? SystemIcons.Application,
+            Icon = SettingsForm.LoadProductIcon(),
             Visible = true,
             ContextMenuStrip = _menu
         };
         _icon.DoubleClick += (_, _) => OpenPicker?.Invoke();
     }
-
-    public event Action? GoRequested;
-    public event Action? CancelRequested;
-    public event Action? TypeOutGoRequested { add => GoRequested += value; remove => GoRequested -= value; }
-    public event Action? TypeOutCancelRequested { add => CancelRequested += value; remove => CancelRequested -= value; }
 
     public void RefreshHotkeyLabel()
     {
@@ -102,8 +95,7 @@ internal sealed class TrayService : IDisposable
                 item.Checked = _settings.TtlEnabled ? seconds == _settings.TtlSeconds : seconds == 0;
     }
 
-    public void RefreshTypeOutStatus(string message) => _typeOut.SetStatus(message);
-    public void RefreshTypeOutLabels() => _typeOut.RefreshHotkey();
+    public void RefreshTypeOutStatus(string message) => Hint("Sideclip", message);
 
     private string TtlLabel() => _settings.TtlEnabled ? "Secret TTL: " + _settings.TtlSeconds + "s" : "Secret TTL: Off";
     private string OpenLabel() => string.IsNullOrWhiteSpace(_settings.PickerHotkey) ? "Open clipboard" : "Open clipboard (" + _settings.PickerHotkey + ")";

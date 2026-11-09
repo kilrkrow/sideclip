@@ -13,37 +13,18 @@ namespace Sideclip.Tests;
 public sealed class TypeOutWiringTests
 {
     [Fact]
-    public void Tray_typeout_parent_is_once_after_TTL_with_reachable_children()
+    public void Tray_has_one_Settings_entry_and_no_feature_send_surfaces()
     {
-        var settings = new AppSettings { TypeOutEnabled = false };
         using var ttl = new System.Windows.Forms.ToolStripMenuItem("Secret TTL");
-        var model = new TrayMenuModel(settings, _ => { });
+        var opened = 0;
+        var model = new TrayMenuModel(() => opened++);
         using var menu = model.Build(new System.Windows.Forms.ContextMenuStrip(), ttl);
-        Assert.Single(menu.Items.Cast<System.Windows.Forms.ToolStripItem>(), item => ReferenceEquals(item, model.Parent));
-        Assert.Single(menu.Items.Cast<System.Windows.Forms.ToolStripItem>(), item => ReferenceEquals(item, model.Actions));
-        Assert.Equal(menu.Items.IndexOf(ttl) + 2, menu.Items.IndexOf(model.Parent));
-        Assert.Equal(4, model.Parent.DropDownItems.Count);
-        Assert.Same(model.Parent, model.Speed.OwnerItem);
-        Assert.Contains("Go: " + settings.TypeOutGoHotkey, model.Hint.Text);
-        Assert.False(model.Speed.Enabled);
-        Assert.False(model.Hint.Enabled);
-        Assert.False(model.Go.Enabled);
-        Assert.False(model.Cancel.Enabled);
-        Assert.All(model.Speed.DropDownItems.Cast<System.Windows.Forms.ToolStripItem>(), item => Assert.False(item.Enabled));
-        Assert.True(model.Off.Enabled);
-        Assert.True(model.On.Enabled);
-        model.On.PerformClick();
-        Assert.True(settings.TypeOutEnabled);
-        Assert.True(model.Speed.Enabled);
-        Assert.True(model.Hint.Enabled);
-        Assert.True(model.Go.Enabled);
-        Assert.True(model.Cancel.Enabled);
-        Assert.All(model.Speed.DropDownItems.Cast<System.Windows.Forms.ToolStripItem>(), item => Assert.True(item.Enabled));
-        model.Off.PerformClick();
-        Assert.False(settings.TypeOutEnabled);
-        Assert.False(model.Hint.Enabled);
+        Assert.Single(menu.Items.Cast<System.Windows.Forms.ToolStripItem>(), item => item.Text == "Settings...");
+        Assert.Single(menu.Items.Cast<System.Windows.Forms.ToolStripItem>(), item => ReferenceEquals(item, ttl));
+        Assert.DoesNotContain(menu.Items.Cast<System.Windows.Forms.ToolStripItem>(), item => item.Text is "Type selected text" or "Type-out actions" or "Hotkeys...");
+        Assert.Empty(model.SettingsItem.DropDownItems);
+        model.SettingsItem.PerformClick(); Assert.Equal(1, opened);
     }
-
     [Theory]
     [InlineData("Remove", false)]
     [InlineData("Remove", true)]
@@ -51,7 +32,7 @@ public sealed class TypeOutWiringTests
     [InlineData("Clear", true)]
     [InlineData("Ttl", false)]
     [InlineData("Ttl", true)]
-    public void Invalidation_cancels_armed_and_running_sessions(string operation, bool running)
+    public void Invalidation_cancels_pending_and_running_sessions(string operation, bool running)
     {
         RunSta(() =>
         {
@@ -71,7 +52,7 @@ public sealed class TypeOutWiringTests
                     new TestFocus(42), () => { }, action => action(), () => true, () => deactivated = true);
                 session.SetEnabled(true);
                 store.EntryInvalidated += session.EntryChanged;
-                Assert.True(session.Arm(entry));
+                Assert.True(session.SelectCandidate(entry));
                 if (running)
                 {
                     session.Go(10000);
@@ -104,16 +85,16 @@ public sealed class TypeOutWiringTests
     }
 
     [Fact]
-    public void Keyboard_mapping_preserves_commit_and_requires_eligible_arm_target()
+    public void Keyboard_Enter_is_copy_only_and_CtrlT_does_not_select_or_type()
     {
         var text = new ClipEntry("text", false, "test");
         var secret = new ClipEntry("secret", true, "test");
         var image = new ClipEntry(string.Empty, false, "test", new byte[] { 1 });
         var malformed = new ClipEntry("bad\uD800", false, "test");
-        Assert.Equal(PickerCommitAction.Paste, PickerKeyMapping.Resolve(Key.Enter, ModifierKeys.None, text, true));
+        Assert.Equal(PickerCommitAction.Copy, PickerKeyMapping.Resolve(Key.Enter, ModifierKeys.None, text, true));
         Assert.Equal(PickerCommitAction.Copy, PickerKeyMapping.Resolve(Key.Enter, ModifierKeys.Shift, text, true));
-        Assert.Equal(PickerCommitAction.ArmTypeOut, PickerKeyMapping.Resolve(Key.T, ModifierKeys.Control, text, true));
-        Assert.Equal(PickerCommitAction.ArmTypeOut, PickerKeyMapping.Resolve(Key.T, ModifierKeys.Control, secret, true));
+        Assert.Equal(PickerCommitAction.None, PickerKeyMapping.Resolve(Key.T, ModifierKeys.Control, text, true));
+        Assert.Equal(PickerCommitAction.None, PickerKeyMapping.Resolve(Key.T, ModifierKeys.Control, secret, true));
         Assert.Equal(PickerCommitAction.None, PickerKeyMapping.Resolve(Key.T, ModifierKeys.Control, text, false));
         Assert.Equal(PickerCommitAction.None, PickerKeyMapping.Resolve(Key.T, ModifierKeys.Control, image, true));
         Assert.Equal(PickerCommitAction.None, PickerKeyMapping.Resolve(Key.T, ModifierKeys.Control, null, true));
@@ -160,9 +141,8 @@ public sealed class TypeOutWiringTests
             var picker = new PickerWindow(new[] { entry }, IntPtr.Zero, (_, _) => { }, true);
             var method = typeof(PickerWindow).GetMethod("OnSelectionChanged", BindingFlags.Instance | BindingFlags.NonPublic);
             method!.Invoke(picker, new object?[] { null, null });
-            var button = (System.Windows.Controls.Button)picker.FindName("TypeOutButton");
             var reason = (System.Windows.Documents.Run)picker.FindName("TypeOutReason");
-            Assert.True(button.IsEnabled);
+            Assert.Null(picker.FindName("TypeOutButton"));
             Assert.Contains("Eligible", reason.Text);
         });
     }

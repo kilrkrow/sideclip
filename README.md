@@ -3,11 +3,11 @@
 Windows tray clipboard that sits beside Win+V. It never steals Win+V.
 
 - Watches the clipboard. Non-secrets persist locally. Secrets stay in memory, expire, and may appear in the picker until wiped (always-secret for 1Password.exe / 1Password-BrowserSupport owner or foreground; browsers use the heuristic).
-- Picker: `Ctrl+Shift+Win+V` (type to filter, Enter paste, Shift+Enter copy).
+- Picker: `Ctrl+Shift+Win+V` (type to filter; Enter, Shift+Enter, double-click, and Copy put the selection on the ordinary Windows clipboard only -- no simulated Ctrl+V).
 - Screenshot path: `Ctrl+Shift+Win+P` types the newest file in `Pictures\Screenshots`.
 - CLI: `sideclip --shots [n]`, `sideclip --newest` (no tray needed), `sideclip --picker`, `sideclip --pick` (tray must be running).
 - Agent skill (Grok, Codex, Claude Code): opens the picker (`--pick`) and inserts the chosen clip. Screenshot paths fall back to a dated text list of the last 3 files (no image ingest).
-- Release is tray-only. Hotkeys are assignable from the tray.
+- Release is tray-only. Hotkeys and type-out options live under tray **Settings...**.
 
 ## Install
 
@@ -39,22 +39,32 @@ Output: `bin\Release\net8.0-windows\win-x64\publish\Sideclip.exe`
 
 ## Daily use
 
-- **Picker:** `Ctrl+Shift+Win+V` (type to filter, Enter paste, Shift+Enter copy).
+- **Picker:** `Ctrl+Shift+Win+V` (type to filter). Enter, Shift+Enter, double-click, and Copy place text or images on the ordinary Windows clipboard only. Your own Ctrl+V / Paste remains normal afterward. Sideclip does not simulate Ctrl+V from those actions.
 - **Screenshot path:** `Ctrl+Shift+Win+P` types the newest file in `Pictures\Screenshots`.
-- Tray icon for history, settings, and About.
-- Hotkeys are configurable from the tray. Defaults never bind `Win+V`, `Ctrl+Win+V`, or `Ctrl+Win+P`.
+- Tray icon for history, **Settings...**, TTL, About, and Exit.
+- Hotkeys are configurable from **Settings...**. Defaults never bind `Win+V`, `Ctrl+Win+V`, or `Ctrl+Win+P`.
 
-## Type-out instead of paste
+## Type-out (clipboard-free text)
 
-Opt in from tray `Type selected text` -> `On`. Select a non-empty text history entry, click `Arm for type-out`, move the caret into the destination, and explicitly press Go (default `Ctrl+Win+Shift+T`). This never writes the entry to the clipboard. Esc cancels while the job is armed or typing; changing windows stops subsequent chunks. Go and pacing live in the existing tray settings/hotkey UI, persist across restarts, and a restart never preserves an armed job. Images, files/empty entries, invalid control/malformed UTF-16, and wiped secrets are ineligible.
+Opt in from tray **Settings...**: enable **Enable clipboard-free text type-out**, optionally set the text-only shortcut (default `Ctrl+Win+Shift+T`), and set bounded delay between chunks (0-250 ms; disabled when type-out is off). Apply saves; Close without Apply leaves prior applied values.
 
-Live secrets may appear in the picker and be typed while their TTL is live. Typing does not start, reset, or extend their existing TTL timer. An expired/deleted/cleared source stops the job, with liveness and foreground handled checked before each chunk. Type-out adds no secret payload history, logs, file exports, or CLI/IPC route. CRLF/LF normalize to Enter keystrokes and tabs to Tab keystrokes for real newline/indentation behavior; other text uses Unicode packets and supplementary characters remain adjacent UTF-16 surrogate code units. NUL/unsupported controls/malformed UTF-16 are refused. `Type selected text` remains off by default for old settings files.
+Approved flow (no Arm phase and no tray Go send action):
 
-SendInput is subject to Windows UIPI/integrity-level and focus/target constraints. It cannot promise elevated/secure-desktop/game/RDP/hostile-target compatibility. A bounded chunk after a focus check can still have a small unavoidable race, and no global text-caret claim is made. Only the selected plain text is sent; no macro engine or generic automation is introduced.
+1. Explicitly select an existing text history entry in the picker (row click or keyboard navigation; merely opening the picker or the initial highlight does not select a source).
+2. Focus the destination window and place the caret.
+3. Press the configured text-only type-out shortcut once.
 
-Tab and Enter are real key presses, not text. The destination decides what they do: a browser or form may move focus on Tab or submit on Enter, and the rest of the entry then lands somewhere else or nowhere. In a Microsoft Edge textarea, typing `tab<Tab>here<LF>next` produced `tabe<LF>next` in one run and `tabhere<LF>next` in another: Tab moved focus, so it never landed in the field. The picker warns before you arm an entry that has Tab or Enter/CR/LF, and the armed status repeats the warning. Sideclip stops when the foreground window changes, and also when the focused Win32 control changes in apps that use real child controls. It cannot see focus changes inside a browser page (DOM focus). So the final status reads `Type-out sent N of N keys. Insertion not verified.`: the keys were sent, but nothing checks what the target inserted. There is no clipboard fallback and no browser automation.
+Selection alone never types. Type-out never writes the entry to the clipboard and never falls back to Latest/clipboard content. Images, empty/file entries, invalid controls, malformed UTF-16, and wiped secrets are ineligible; choosing an image clears any older text source rather than falling back to it. The trigger is single-use: after an attempted run you must deliberately select again. A trigger with no source is a no-op.
 
-See [type-out test plan and manual evidence batch](docs/TYPEOUT-TEST-PLAN.md).
+Esc cancels while a pending source exists outside the picker or while a run is active; picker Esc still clears the filter first, then closes and clears the source. Opening Settings, applying changes, turning type-out off, deleting/clearing/expiring the source, or exiting cancels safely. Off -> On and restart never restore a source. Disabled or blank/unassigned releases the shortcut; collisions and reserved chords (`Win+V`, `Ctrl+Win+V`, `Ctrl+Win+P`, and other reserved keys) are refused with an inline error (no hidden fallback).
+
+Live secrets may appear in the picker and be typed while their TTL is live (TTL Off is allowed). Typing does not start, reset, or extend TTL. An expired/deleted/cleared/trimmed source cannot run. Type-out adds no secret payload history, logs, file exports, or CLI/IPC route. CRLF/LF normalize to Enter keystrokes and tabs to Tab keystrokes; other text uses Unicode packets; supplementary characters stay adjacent UTF-16 units. NUL/unsupported controls/malformed UTF-16 are refused. Type-out remains off by default for fresh and legacy settings files.
+
+SendInput is subject to Windows UIPI/integrity-level and focus/target constraints. It cannot promise elevated/secure-desktop/game/RDP/hostile-target compatibility. A bounded chunk after a focus check can still race. Only the selected plain text is sent; there is no macro engine, OCR, image typing, or browser DOM automation.
+
+Tab and Enter are real key presses. The destination decides what they do: a browser or form may move focus on Tab or submit on Enter. The picker shows a visible pre-send warning when the entry contains Tab or Enter/CR/LF. Sideclip stops when the foreground window changes, and also when the focused Win32 control changes in apps that use real child controls. It cannot see focus changes inside a browser page (DOM focus). Completion status reports keys sent and states insertion is not verified. There is no clipboard fallback.
+
+See [type-out test plan and evidence ledger](docs/TYPEOUT-TEST-PLAN.md). Comparison notes versus AutoHotkey SendText and KeePass Auto-Type are in that document (deliberate targeting and cancellation; Sideclip is not a macro host).
 
 ## CLI
 
@@ -114,7 +124,7 @@ On Windows, `.\scripts\publish-release.ps1` publishes to `artifacts\publish\win-
 
 ## Version
 
-`0.3.0` in `Sideclip.csproj` (`Version` / `AssemblyVersion`).
+`0.3.0` in `Sideclip.csproj` (`Version` / `AssemblyVersion`). Public metadata uses `kilrkrow`.
 
 ## Chocolatey packaging
 

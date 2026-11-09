@@ -7,38 +7,33 @@ using Sideclip.TypeOut;
 
 namespace Sideclip.Picker;
 
-internal enum PickerCommitAction { None, Paste, Copy, ArmTypeOut }
+internal enum PickerCommitAction { None, Copy }
 
 internal static class PickerKeyMapping
 {
-    public static PickerCommitAction Resolve(Key key, ModifierKeys modifiers, ClipEntry? entry, bool typeOutEnabled)
-    {
-        if (key == Key.Enter)
-            return (modifiers & ModifierKeys.Shift) != 0 ? PickerCommitAction.Copy : PickerCommitAction.Paste;
-        if (key == Key.T && (modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows | ModifierKeys.Shift)) == ModifierKeys.Control
-            && entry is not null && typeOutEnabled && TypeOutSession.CanType(entry, entry.HasPayload))
-            return PickerCommitAction.ArmTypeOut;
-        return PickerCommitAction.None;
-    }
+    public static PickerCommitAction Resolve(Key key, ModifierKeys modifiers, ClipEntry? entry, bool typeOutEnabled) =>
+        key == Key.Enter ? PickerCommitAction.Copy : PickerCommitAction.None;
 }
-
 public partial class PickerWindow : Window
 {
     private readonly List<ClipEntry> _all = new();
     private readonly List<ClipEntry> _shown = new();
     private string _filter = string.Empty;
-    private IntPtr _restore;
     private readonly Action<ClipEntry, bool> _commit;
-    private bool _restoreSucceeded;
-    public event Action<ClipEntry>? TypeOutRequested;
-    private readonly bool _typeOutEnabled;
+    public event Action<ClipEntry>? CandidateSelected;
+    public event Action? CandidateInvalidated;
+    private ClipEntry? _deliberate;
+    private bool _didCommit;
+    private bool _typeOutEnabled;
+    private string? _typeOutShortcutDisplay;
 
-    public PickerWindow(IEnumerable<ClipEntry> entries, IntPtr restoreHwnd, Action<ClipEntry, bool> commit, bool typeOutEnabled = false)
+    public PickerWindow(IEnumerable<ClipEntry> entries, IntPtr restoreHwnd, Action<ClipEntry, bool> commit, bool typeOutEnabled = false, string? typeOutShortcut = null)
     {
         InitializeComponent();
-        _restore = restoreHwnd;
         _commit = commit;
         _typeOutEnabled = typeOutEnabled;
+        _typeOutShortcutDisplay = typeOutShortcut;
+        ApplyHelpTexts();
         foreach (var e in entries)
         {
             if (e.HasPayload)
@@ -47,6 +42,28 @@ public partial class PickerWindow : Window
 
         ApplyFilter();
         Loaded += (_, _) => { Activate(); List.Focus(); RefreshTypeOut(Selected()); };
+    }
+
+    /// <summary>
+    /// Refresh bottom help after Settings changes without recreating the picker.
+    /// When enabled: non-empty = configured chord; empty = unassigned; null = unavailable.
+    /// </summary>
+    public void UpdateTypeOutHelp(bool typeOutEnabled, string? typeOutShortcutDisplay)
+    {
+        _typeOutEnabled = typeOutEnabled;
+        _typeOutShortcutDisplay = typeOutShortcutDisplay;
+        ApplyHelpTexts();
+        RefreshTypeOut(Selected());
+    }
+
+    private void ApplyHelpTexts()
+    {
+        if (NavHelp is not null)
+            NavHelp.Text = PickerNoArmHelp.NavigationLine;
+        if (CopyHelp is not null)
+            CopyHelp.Text = PickerNoArmHelp.CopyLine;
+        if (TypeOutHelp is not null)
+            TypeOutHelp.Text = PickerNoArmHelp.FormatTypeOutLine(_typeOutEnabled, _typeOutShortcutDisplay);
     }
 
     private void ApplyFilter()
@@ -75,8 +92,14 @@ public partial class PickerWindow : Window
             ? (string.IsNullOrEmpty(q) ? "Clipboard is empty" : ("No matches for " + (char)34 + q + (char)34))
             : EmptyHint.Text;
 
+        if (_deliberate is not null && !_shown.Contains(_deliberate))
+        { _deliberate = null; CandidateInvalidated?.Invoke(); }
         if (_shown.Count > 0)
-            List.SelectedIndex = 0;
+        {
+            // Programmatic highlight only. Never primes a candidate.
+            var keep = _deliberate is not null ? _shown.IndexOf(_deliberate) : -1;
+            List.SelectedIndex = keep >= 0 ? keep : 0;
+        }
         else
             ShowPreview(null);
     }
@@ -95,28 +118,37 @@ public partial class PickerWindow : Window
         return text.Contains(q, StringComparison.OrdinalIgnoreCase);
     }
 
-    private void OnTypeOutClick(object sender, RoutedEventArgs e)
+    private void ChooseDeliberately(ClipEntry? entry)
     {
-        var entry = Selected();
-        if (entry is null || !_typeOutEnabled || TypeOutSession.CanType(entry, entry.HasPayload) == false) return;
-        _didCommit = true;
-        Close();
-        if (_restoreSucceeded)
+        if (entry is null) return;
+        _deliberate = entry;
+        CandidateSelected?.Invoke(entry);
+    }
+
+    private void OnRowChoose(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is ListBoxItem row && row.Content is FrameworkElement { Tag: ClipEntry entry })
         {
-            _restore = NativeMethods.GetForegroundWindow();
-            TypeOutRequested?.Invoke(entry);
+            // The preview event identifies the clicked row before WPF's normal
+            // selection update. Keep copy and candidate identity synchronized.
+            var index = _shown.IndexOf(entry);
+            if (index < 0) return;
+            List.SelectedIndex = index;
+            ChooseDeliberately(entry);
         }
     }
 
     private void OnCopyClick(object sender, RoutedEventArgs e) => Commit(paste: false);
-
     private void RefreshTypeOut(ClipEntry? entry)
     {
         var enabled = entry is not null && _typeOutEnabled && TypeOutSession.CanType(entry, entry.HasPayload);
-        TypeOutButton.IsEnabled = enabled;
-        TypeOutReason.Text = entry is null
+        TypeOutReason.Text = !_typeOutEnabled ? "Type-out is off." : entry is null
             ? (_typeOutEnabled ? "Select an eligible text entry." : "Type-out is off.")
             : enabled ? (TypeOutText.HasTargetKeys(entry.TryGetText()) ? "Eligible. " + TypeOutText.TargetKeyWarning : "Eligible and will be rechecked before every chunk.") : entry.IsImage ? "Images and file entries cannot be typed." : TypeOutText.Validate(entry.TryGetText()) ?? "This entry cannot be typed.";
+        // A fixed AutomationProperties.Name masks all inline text from UIA.
+        // Expose the actual current help and warnings, not just a generic role.
+        System.Windows.Automation.AutomationProperties.SetName(FooterHelp,
+            new System.Windows.Documents.TextRange(FooterHelp.ContentStart, FooterHelp.ContentEnd).Text);
     }
 
     private static FrameworkElement BuildRow(ClipEntry e)
@@ -193,19 +225,17 @@ public partial class PickerWindow : Window
         return i >= 0 && i < _shown.Count ? _shown[i] : null;
     }
 
+    internal void EscapePicker()
+    {
+        if (_filter.Length > 0) { _filter = string.Empty; ApplyFilter(); }
+        else { CandidateInvalidated?.Invoke(); Close(); }
+    }
+
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {
-            if (_filter.Length > 0)
-            {
-                _filter = string.Empty;
-                ApplyFilter();
-            }
-            else
-            {
-                Close();
-            }
+            EscapePicker();
 
             e.Handled = true;
             return;
@@ -253,30 +283,22 @@ public partial class PickerWindow : Window
 
         if (e.Key == Key.Home)
         {
-            if (_shown.Count > 0) List.SelectedIndex = 0;
+            if (_shown.Count > 0) { List.SelectedIndex = 0; ChooseDeliberately(Selected()); }
             e.Handled = true;
             return;
         }
 
         if (e.Key == Key.End)
         {
-            if (_shown.Count > 0) List.SelectedIndex = _shown.Count - 1;
+            if (_shown.Count > 0) { List.SelectedIndex = _shown.Count - 1; ChooseDeliberately(Selected()); }
             e.Handled = true;
             return;
         }
 
         switch (PickerKeyMapping.Resolve(e.Key, Keyboard.Modifiers, Selected(), _typeOutEnabled))
         {
-            case PickerCommitAction.Paste:
-                Commit(paste: true);
-                e.Handled = true;
-                return;
             case PickerCommitAction.Copy:
                 Commit(paste: false);
-                e.Handled = true;
-                return;
-            case PickerCommitAction.ArmTypeOut:
-                OpenSelectedTypeOut();
                 e.Handled = true;
                 return;
         }
@@ -306,7 +328,6 @@ public partial class PickerWindow : Window
     public event Action? Cleared;
     public event Action? Cancelled;
 
-    private bool _didCommit;
 
     private void OnClearClick(object sender, RoutedEventArgs e) => ClearAll();
 
@@ -338,24 +359,20 @@ public partial class PickerWindow : Window
         if (i < 0) i += n;
         List.SelectedIndex = i;
         List.ScrollIntoView(List.SelectedItem);
+        ChooseDeliberately(Selected());
     }
 
     private void OnRowActivate(object sender, MouseButtonEventArgs e)
     {
-        Commit(paste: true);
+        Commit(paste: false);
         e.Handled = true;
-    }
-
-    private void OpenSelectedTypeOut()
-    {
-        OnTypeOutClick(TypeOutButton, new RoutedEventArgs());
     }
 
     private void OnPreviewActivate(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount < 2)
             return;
-        Commit(paste: true);
+        Commit(paste: false);
         e.Handled = true;
     }
 
@@ -369,6 +386,7 @@ public partial class PickerWindow : Window
 
     private void Commit(bool paste)
     {
+        if (_didCommit) return;
         var sel = Selected();
         if (sel is null)
         {
@@ -376,31 +394,19 @@ public partial class PickerWindow : Window
             return;
         }
 
+        ChooseDeliberately(sel);
         _didCommit = true;
-        Close(); // OnClosed fires here and sets _restoreSucceeded
-        _commit(sel, paste && _restoreSucceeded);
+        Close();
+        _commit(sel, false);
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        // Complete a CLI pick on any uncommitted close (scrim/window close/Esc).
+        // This notification does not invalidate a type-out candidate: only an
+        // explicit cancel or source/settings invalidation owns that policy.
         if (!_didCommit)
             Cancelled?.Invoke();
-        if (_restore == IntPtr.Zero)
-        {
-            _restoreSucceeded = true;
-        }
-        else if (InputSender.FocusWindow(_restore))
-        {
-            // Confirm the window that actually received focus is _restore, not
-            // another window that jumped to the foreground during the transition.
-            NativeMethods.GetWindowThreadProcessId(NativeMethods.GetForegroundWindow(), out var fgPid);
-            NativeMethods.GetWindowThreadProcessId(_restore, out var restorePid);
-            _restoreSucceeded = fgPid != 0 && fgPid == restorePid;
-        }
-        else
-        {
-            _restoreSucceeded = false;
-        }
         base.OnClosed(e);
     }
 }

@@ -1,17 +1,51 @@
-﻿<!doctype html>
-<html lang="en"><meta charset="utf-8"><title>Generic paste-blocked typing fixture</title>
-<style>body{font-family:Consolas,monospace;background:#20242d;color:#e5e9f6;padding:2rem}textarea{width:100%;height:22rem;background:#2e323f;border:1px solid #c0c9d4;color:#e5e9f6;font:1rem Consolas;tab-size:4}p{color:#abafbc}</style>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Generic paste-blocked typing fixture</title>
+<style>
+body{font-family:Consolas,monospace;background:#20242d;color:#e5e9f6;padding:2rem;max-width:52rem}
+textarea{width:100%;height:22rem;background:#2e323f;border:1px solid #c0c9d4;color:#e5e9f6;font:1rem Consolas;tab-size:4}
+p,li{color:#abafbc;line-height:1.45}
+code{color:#e5e9f6}
+.note{border:1px solid #c0c9d4;padding:0.75rem 1rem;background:#2e323f}
+</style>
+</head>
+<body>
 <h1>Paste-blocked generic text target</h1>
-<p>No network requests, libraries, or clipboard access. Normal keyboard input is accepted; paste events are blocked.</p>
+<p>No network requests, libraries, clipboard reads, or product automation hooks. Use this local file only as a synthetic destination for Sideclip type-out checks.</p>
+<div class="note">
+<p><strong>Keyboard text:</strong> ordinary character input is accepted into the textarea below.</p>
+<p><strong>Paste/drop:</strong> paste and drop are blocked on purpose so clipboard paste cannot silently satisfy a type-out check.</p>
+<p><strong>Tab / Enter limitation:</strong> Tab and Enter are real keys. In this page (and many browsers/forms) Tab may move focus out of the textarea and Enter may submit or insert a line depending on the control. Sideclip warns before typing entries that contain Tab or Enter/CR/LF. Native window/control focus checks cannot see focus changes inside the page DOM, so completion means keys were sent, not that insertion was verified.</p>
+</div>
 <textarea id="target" spellcheck="false" aria-label="Type-out test destination"></textarea>
-<p id="status">Paste has not been attempted.</p>
+<p id="status" role="status">Waiting for keyboard input. Paste has not been attempted.</p>
+<ul>
+<li>Expected PASS for type-out: typed characters appear here without using the clipboard.</li>
+<li>Expected PASS for paste block: Ctrl+V / context-paste / drop leaves the field unchanged and updates status.</li>
+<li>Do not treat Tab focus loss as a Sideclip product bug; document the readback honestly.</li>
+</ul>
 <script>
 const target = document.getElementById('target');
-target.addEventListener('paste', event => { event.preventDefault(); document.getElementById('status').textContent = 'paste prevented (expected);'; });
+const status = document.getElementById('status');
+target.addEventListener('paste', event => {
+  event.preventDefault();
+  status.textContent = 'paste prevented (expected)';
+});
 target.addEventListener('beforeinput', event => {
- if (event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop') {
-  event.preventDefault(); document.getElementById('status').textContent = 'paste/drop input prevented (expected);';
- }
+  if (event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop') {
+    event.preventDefault();
+    status.textContent = 'paste/drop input prevented (expected)';
+  }
+});
+target.addEventListener('keydown', event => {
+  if (event.key === 'Tab') {
+    status.textContent = 'Tab key observed; browser may move focus out of this field (expected limitation)';
+  } else if (event.key === 'Enter') {
+    status.textContent = 'Enter key observed; destination decides submit vs newline (expected limitation)';
+  }
 });
 </script>
+</body>
 </html>

@@ -21,7 +21,8 @@ public sealed class ClipHistoryStore : IDisposable
     private readonly Dispatcher _dispatcher;
     private readonly Action<ClipEntry> _onSecretExpired;
     private readonly List<ClipEntry> _entries = new();
-    private readonly List<DispatcherTimer> _timers = new();
+    private readonly Dictionary<ClipEntry, DispatcherTimer> _timers = new();
+    private readonly Dictionary<ClipEntry, DateTime> _expires = new();
     private TimeSpan _ttl;
     private bool _ttlEnabled;
 
@@ -52,52 +53,61 @@ public sealed class ClipHistoryStore : IDisposable
 
     public void SetTtl(TimeSpan ttl, bool enabled)
     {
-        if (ttl.TotalSeconds < 3)
-            ttl = TimeSpan.FromSeconds(3);
-        _ttl = ttl;
-
-        var turningOn = enabled && !_ttlEnabled;
-        _ttlEnabled = enabled;
-
-        if (!enabled)
+        if (ttl.TotalSeconds < 3) ttl = TimeSpan.FromSeconds(3);
+        var now = DateTime.UtcNow;
+        ClipEntry[] elapsed;
+        lock (_entries)
+            elapsed = _expires.Where(pair => pair.Value <= now).Select(pair => pair.Key).ToArray();
+        // Even turning TTL off cannot resurrect a source whose old deadline elapsed.
+        foreach (var entry in elapsed) ExpireSecret(entry);
+        foreach (var timer in _timers.Values) timer.Stop();
+        _timers.Clear();
+        ClipEntry[] secrets;
+        lock (_entries)
         {
-            foreach (var timer in _timers)
-                timer.Stop();
-            _timers.Clear();
-            // Leave IsSecret true — secrets stay in picker RAM, never written to disk.
-            PersistNonSecrets();
-            return;
+            var turningOn = enabled && !_ttlEnabled;
+            _ttl = ttl;
+            _ttlEnabled = enabled;
+            if (!enabled) _expires.Clear();
+            secrets = _entries.Where(entry => entry.IsSecret).ToArray();
+            if (enabled)
+                foreach (var entry in secrets)
+                {
+                    var next = now + ttl;
+                    if (turningOn || !_expires.TryGetValue(entry, out var old)) _expires[entry] = next;
+                    else _expires[entry] = old < next ? old : next;
+                }
         }
-
-        if (turningOn)
-        {
-            foreach (var e in _entries)
-            {
-                if (e.IsSecret)
-                    StartSecretTimer(e);
-            }
-        }
+        if (enabled) foreach (var entry in secrets) StartSecretTimer(entry);
+        PersistNonSecrets();
     }
-
     public bool IsPickerSource(ClipEntry entry)
     {
         lock (_entries) return _entries.Contains(entry, ReferenceEqualityComparer.Instance);
     }
 
-    public IEnumerable<ClipEntry> PickerEntries()
+    // Independent of dispatcher timer delivery: a delayed UI tick cannot keep
+    // an already elapsed secret eligible for a trigger or another input chunk.
+    public bool IsTypeOutSource(ClipEntry entry)
     {
-        foreach (var e in _entries)
-        {
-            if (e.HasPayload)
-                yield return e;
-        }
+        lock (_entries)
+            return _entries.Contains(entry, ReferenceEqualityComparer.Instance) && entry.HasPayload
+                && (!entry.IsSecret || !_ttlEnabled || _expires.TryGetValue(entry, out var deadline) && DateTime.UtcNow < deadline);
     }
 
+    public IEnumerable<ClipEntry> PickerEntries()
+    {
+        lock (_entries) return _entries.Where(entry => entry.HasPayload).ToArray();
+    }
     public ClipEntry Add(string text, bool isSecret, string ownerExe, byte[]? imagePng = null)
     {
         var entry = new ClipEntry(text, isSecret, ownerExe, imagePng);
         Latest = entry;
-        _entries.Insert(0, entry);
+        lock (_entries)
+        {
+            _entries.Insert(0, entry);
+            if (isSecret && _ttlEnabled) _expires[entry] = entry.CopiedAt + _ttl;
+        }
         Trim();
 
         var preview = isSecret
@@ -124,7 +134,12 @@ public sealed class ClipHistoryStore : IDisposable
 
     private void RemoveEntry(ClipEntry entry, EntryInvalidationReason reason)
     {
-        _entries.Remove(entry);
+        lock (_entries)
+        {
+            if (!_entries.Remove(entry)) return;
+            _expires.Remove(entry);
+        }
+        if (_timers.Remove(entry, out var timer)) timer.Stop();
         for (var i = Rows.Count - 1; i >= 0; i--)
         {
             if (ReferenceEquals(Rows[i].Entry, entry))
@@ -142,63 +157,52 @@ public sealed class ClipHistoryStore : IDisposable
 
     public void ClearNonSecrets()
     {
-        for (var i = _entries.Count - 1; i >= 0; i--)
-        {
-            if (!_entries[i].IsSecret)
-            {
-                var e = _entries[i];
-                _entries.RemoveAt(i);
-                e.WipePayload();
-                Invalidated(e, EntryInvalidationReason.Cleared);
-            }
-        }
-
-        for (var i = Rows.Count - 1; i >= 0; i--)
-        {
-            if (!Rows[i].Entry.IsSecret)
-                Rows.RemoveAt(i);
-        }
-
-        PersistNonSecrets();
+        ClipEntry[] entries;
+        lock (_entries) entries = _entries.Where(entry => !entry.IsSecret).ToArray();
+        foreach (var entry in entries) RemoveEntry(entry, EntryInvalidationReason.Cleared);
     }
 
     public void ClearAll()
     {
-        var invalidated = _entries.ToArray();
-        foreach (var timer in _timers)
-            timer.Stop();
+        ClipEntry[] invalidated;
+        foreach (var timer in _timers.Values) timer.Stop();
         _timers.Clear();
-
-        foreach (var e in _entries)
-            e.WipePayload();
-        _entries.Clear();
+        lock (_entries)
+        {
+            invalidated = _entries.ToArray();
+            _entries.Clear();
+            _expires.Clear();
+        }
+        foreach (var entry in invalidated) entry.WipePayload();
         Rows.Clear();
         Latest = null;
-        foreach (var e in invalidated)
-            Invalidated(e, EntryInvalidationReason.Cleared);
+        foreach (var entry in invalidated) Invalidated(entry, EntryInvalidationReason.Cleared);
         PersistNonSecrets();
     }
 
     private void StartSecretTimer(ClipEntry entry)
     {
-        if (!_ttlEnabled)
-            return;
-
-        var timer = new DispatcherTimer(DispatcherPriority.Normal, _dispatcher)
-        {
-            Interval = _ttl
-        };
+        DateTime deadline;
+        lock (_entries)
+            if (!_ttlEnabled || !_expires.TryGetValue(entry, out deadline)) return;
+        if (_timers.Remove(entry, out var old)) old.Stop();
+        var remaining = deadline - DateTime.UtcNow;
+        if (remaining <= TimeSpan.Zero) { ExpireSecret(entry); return; }
+        var timer = new DispatcherTimer(DispatcherPriority.Normal, _dispatcher) { Interval = remaining };
         timer.Tick += (_, _) =>
         {
             timer.Stop();
-            _timers.Remove(timer);
-            // RemoveEntry raises EntryInvalidated for TTL expiry too.
-            ExpireSecret(entry);
+            _timers.Remove(entry);
+            // Recheck deadline if Windows delivers a timer tick early.
+            DateTime current;
+            lock (_entries)
+                if (!_expires.TryGetValue(entry, out current)) return;
+            if (DateTime.UtcNow < current) StartSecretTimer(entry);
+            else ExpireSecret(entry);
         };
-        _timers.Add(timer);
+        _timers[entry] = timer;
         timer.Start();
     }
-
     private void ExpireSecret(ClipEntry entry)
     {
         _onSecretExpired(entry);
@@ -222,8 +226,6 @@ public sealed class ClipHistoryStore : IDisposable
         while (_entries.Count > MaxEntries)
         {
             var last = _entries[^1];
-            if (last.IsSecret)
-                break;
             RemoveEntry(last);
         }
     }
@@ -321,7 +323,7 @@ public sealed class ClipHistoryStore : IDisposable
                     continue;
 
                 var entry = new ClipEntry(text, isSecret: false, rec.Owner ?? "unknown", png);
-                _entries.Add(entry);
+                lock (_entries) _entries.Add(entry);
                 var preview = entry.IsImage ? ImageCaption(entry) : ClipEntry.MakeNonSecretPreview(text);
                 Rows.Add(new ClipEntryView(entry, () => _ttl, () => _ttlEnabled, preview));
             }
@@ -335,13 +337,13 @@ public sealed class ClipHistoryStore : IDisposable
 
     public void Dispose()
     {
-        foreach (var timer in _timers)
+        foreach (var timer in _timers.Values)
             timer.Stop();
         _timers.Clear();
 
         foreach (var entry in _entries)
             entry.WipePayload();
-        _entries.Clear();
+        lock (_entries) { _entries.Clear(); _expires.Clear(); }
         Rows.Clear();
         Latest = null;
     }

@@ -27,7 +27,7 @@ public sealed class TypeOutTargetKeyTests
     [Fact]
     public void Warnings_are_ascii_name_the_risk_and_fit_the_tray_label()
     {
-        foreach (var message in new[] { TypeOutText.TargetKeyWarning, TypeOutText.ArmedTargetKeyWarning })
+        foreach (var message in new[] { TypeOutText.TargetKeyWarning, TypeOutText.SelectedTargetKeyWarning })
         {
             Assert.All(message, ch => Assert.InRange(ch, ' ', '~'));
             Assert.Contains("Tab", message);
@@ -35,7 +35,7 @@ public sealed class TypeOutTargetKeyTests
         }
         Assert.Contains("browsers", TypeOutText.TargetKeyWarning);
         Assert.Contains("navigation or submit", TypeOutText.TargetKeyWarning);
-        Assert.True(TypeOutText.ArmedTargetKeyWarning.Length <= 80, "tray status label is cut at 80 characters");
+        Assert.True(TypeOutText.SelectedTargetKeyWarning.Length <= 80, "tray status label is cut at 80 characters");
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public sealed class TypeOutTargetKeyTests
                     new TypeOutTests.FakeFocus(42), () => { }, action => action(), () => true, () => { });
                 session.SetEnabled(true);
                 store.EntryInvalidatedWithReason += session.EntryChanged;
-                Assert.True(session.Arm(entry));
+                Assert.True(session.SelectCandidate(entry));
                 session.Go(10000);
                 Assert.True(sink.Started.Wait(TimeSpan.FromSeconds(2)), "delay entered");
                 switch (operation)
@@ -159,22 +159,22 @@ public sealed class TypeOutTargetKeyTests
     }
 
     [Fact]
-    public void Arming_an_entry_with_tab_reports_the_target_key_warning()
+    public void Selecting_an_entry_with_tab_reports_the_target_key_warning()
     {
         var reports = new List<string>();
         using var session = new TypeOutSession(e => e.HasPayload, reports.Add,
             () => new TypeOutRunner(new TypeOutTests.FakeSink(), new TypeOutTests.FakeFocus(42)),
             new TypeOutTests.FakeFocus(42), () => { }, action => action(), () => true, () => { });
         session.SetEnabled(true);
-        Assert.True(session.Arm(new ClipEntry("col1\tcol2", false, "test")));
-        Assert.Equal(TypeOutText.ArmedTargetKeyWarning, reports[^1]);
+        Assert.True(session.SelectCandidate(new ClipEntry("col1\tcol2", false, "test")));
+        Assert.Equal(TypeOutText.SelectedTargetKeyWarning, reports[^1]);
         session.Cancel();
-        Assert.True(session.Arm(new ClipEntry("plain", false, "test")));
-        Assert.Equal("Armed: target the destination, then press Go. Esc cancels.", reports[^1]);
+        Assert.True(session.SelectCandidate(new ClipEntry("plain", false, "test")));
+        Assert.Equal("Selected: focus destination, then use the type-out shortcut. Esc cancels.", reports[^1]);
     }
 
     [Fact]
-    public void Turning_off_while_armed_replaces_the_armed_status_and_releases_hotkeys()
+    public void Turning_off_while_pending_replaces_the_pending_status_and_releases_hotkeys()
     {
         var reports = new List<string>();
         var released = 0;
@@ -182,7 +182,7 @@ public sealed class TypeOutTargetKeyTests
             () => new TypeOutRunner(new TypeOutTests.FakeSink(), new TypeOutTests.FakeFocus(42)),
             new TypeOutTests.FakeFocus(42), () => { }, action => action(), () => true, () => released++);
         session.SetEnabled(true);
-        Assert.True(session.Arm(new ClipEntry("plain", false, "test")));
+        Assert.True(session.SelectCandidate(new ClipEntry("plain", false, "test")));
         released = 0;
         session.SetEnabled(false);
         Assert.Equal(TypeOutSession.TurnedOffMessage, reports[^1]);
@@ -199,12 +199,13 @@ public sealed class TypeOutTargetKeyTests
     }
 
     [Fact]
-    public void Saving_hotkeys_while_armed_reports_why_the_job_was_dropped()
+    public void Saving_hotkeys_while_pending_reports_why_the_job_was_dropped()
     {
         var source = File.ReadAllText(Path.Combine(SourceRoot, "App.xaml.cs"));
-        var open = source[source.IndexOf("private void OpenHotkeySettings()", StringComparison.Ordinal)..];
-        open = open[..open.IndexOf("OnSettingsChanged(_settings);", StringComparison.Ordinal)];
-        Assert.Contains("_typeOut?.Cancel(_typeOut.HasEntry ? TypeOutSession.HotkeysChangedMessage : null);", open);
+        var open = source[source.IndexOf("private void OpenSettings()", StringComparison.Ordinal)..];
+        open = open[..open.IndexOf("private void ApplyDebugVisibility()", StringComparison.Ordinal)];
+        Assert.Contains("() => _typeOut?.Cancel(_typeOut.HasEntry ? TypeOutSession.HotkeysChangedMessage : null)", open);
+        Assert.Contains("_typeOut?.Cancel(TypeOutSession.HotkeysChangedMessage);", open);
         Assert.All(TypeOutSession.HotkeysChangedMessage + TypeOutSession.IdleMessage + TypeOutSession.TurnedOffMessage, ch => Assert.InRange(ch, ' ', '~'));
         Assert.True(TypeOutSession.HotkeysChangedMessage.Length <= 80);
     }
@@ -220,7 +221,7 @@ public sealed class TypeOutTargetKeyTests
                 () => new TypeOutRunner(sink, new TypeOutTests.FakeFocus(42), (ms, token) => sink.Delay(token), 2),
                 new TypeOutTests.FakeFocus(42), () => { }, action => action(), () => true, () => { });
             session.SetEnabled(true);
-            Assert.True(session.Arm(new ClipEntry("abcd", false, "test")));
+            Assert.True(session.SelectCandidate(new ClipEntry("abcd", false, "test")));
             session.Go(10000);
             Assert.True(sink.Started.Wait(TimeSpan.FromSeconds(2)), "delay entered");
             session.SetEnabled(false);
@@ -236,14 +237,13 @@ public sealed class TypeOutTargetKeyTests
     {
         var xaml = File.ReadAllText(Path.Combine(SourceRoot, "Picker", "PickerWindow.xaml"));
         Assert.Contains("x:Key=\"PickerButton\"", xaml);
-        Assert.Matches("x:Name=\"TypeOutButton\"[^>]*Style=\"\\{StaticResource PickerButton\\}\"", xaml);
         Assert.Matches("x:Name=\"CopyButton\"[^>]*Style=\"\\{StaticResource PickerButton\\}\"", xaml);
         var trigger = xaml[xaml.IndexOf("<Trigger Property=\"IsEnabled\" Value=\"False\">", StringComparison.Ordinal)..];
         trigger = trigger[..trigger.IndexOf("</Trigger>", StringComparison.Ordinal)];
         Assert.Contains("Value=\"#262A35\"", trigger);
         Assert.Contains("Property=\"Foreground\" Value=\"#9AA0AC\"", trigger);
         // WCAG contrast of disabled text on the disabled background.
-        Assert.True(Contrast(0x9AA0AC, 0x262A35) >= 4.5, "disabled Arm text contrast");
+        Assert.True(Contrast(0x9AA0AC, 0x262A35) >= 4.5, "disabled Copy text contrast");
         var cs = File.ReadAllText(Path.Combine(SourceRoot, "Picker", "PickerWindow.xaml.cs"));
         Assert.Contains("TypeOutText.HasTargetKeys(entry.TryGetText())", cs);
         Assert.Contains("TypeOutText.TargetKeyWarning", cs);

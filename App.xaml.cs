@@ -29,6 +29,7 @@ public partial class App : System.Windows.Application
     private Mutex? _single;
     private IpcServer? _ipc;
     private TypeOutSession? _typeOut;
+    private SettingsWindowHost? _settingsWindows;
     private TaskCompletionSource<PickResult>? _pickWaiter;
     private readonly List<string> _pickPngPaths = new();
 
@@ -67,7 +68,7 @@ public partial class App : System.Windows.Application
         _history = new ClipHistoryStore(Dispatcher, OnSecretExpired, TimeSpan.FromSeconds(_settings.TtlSeconds), _settings.TtlEnabled);
 
         _typeOut = new TypeOutSession(
-            entry => _history!.IsPickerSource(entry) && entry.HasPayload && entry.TryGetText() is not null,
+            entry => _history!.IsTypeOutSource(entry) && entry.HasPayload && entry.TryGetText() is not null,
             ReportTypeOut,
             releaseModifiers: () =>
             {
@@ -76,10 +77,9 @@ public partial class App : System.Windows.Application
             },
             activateHotkeys: () =>
             {
-                _hotkeys?.SetTypeOutActive(true, _settings.TypeOutGoHotkey);
-                return _hotkeys?.TypeOutRegistered == true && _hotkeys.EscapeRegistered;
+                return _hotkeys?.TypeOutRegistered == true && _hotkeys.SetEscapeActive(true);
             },
-            deactivateHotkeys: () => _hotkeys?.SetTypeOutActive(false, _settings.TypeOutGoHotkey),
+            deactivateHotkeys: () => _hotkeys?.SetEscapeActive(false),
             postToUi: action => Dispatcher.BeginInvoke(action));
         _typeOut.SetEnabled(_settings.TypeOutEnabled);
         _history.EntryInvalidatedWithReason += (entry, reason) => _typeOut.EntryChanged(entry, reason);
@@ -105,18 +105,16 @@ public partial class App : System.Windows.Application
         _hotkeys.ScreenshotPathRequested += () => Dispatcher.BeginInvoke(TypeScreenshotPath);
         _hotkeys.TypeOutGoRequested += () => Dispatcher.BeginInvoke(GoTypeOut);
         _hotkeys.TypeOutCancelRequested += () => Dispatcher.BeginInvoke(CancelTypeOut);
+        _hotkeys.RegistrationChanged += NotifyPickerConfiguration;
         _hotkeys.Start();
-        _hotkeys.Apply(_settings.PickerHotkey, _settings.ScreenshotHotkey, _settings.TypeOutGoHotkey);
+        _hotkeys.Apply(_settings.PickerHotkey, _settings.ScreenshotHotkey, _settings.TypeOutGoHotkey, _settings.TypeOutEnabled);
 
         _tray = new TrayService(_settings, OnSettingsChanged);
         _tray.OpenPicker += OpenPicker;
-        _tray.EditHotkeys += OpenHotkeySettings;
+        _tray.OpenSettings += OpenSettings;
         _tray.ClearHistory += ClearHistory;
-        _tray.TypeOutGoRequested += GoTypeOut;
-        _tray.TypeOutCancelRequested += CancelTypeOut;
         _tray.ExitApp += Shutdown;
         _tray.RefreshHotkeyLabel();
-        _tray.RefreshTypeOutLabels();
         if (!string.IsNullOrWhiteSpace(_hotkeys.LastError))
             _tray.Hint("Sideclip", _hotkeys.LastError.Trim());
 
@@ -131,32 +129,67 @@ public partial class App : System.Windows.Application
 
     private void OnSettingsChanged(AppSettings settings)
     {
-        var oldGo = _settings.TypeOutGoHotkey;
+        _typeOut?.Cancel(TypeOutSession.HotkeysChangedMessage);
         SettingsManager.Save(settings);
         _history?.SetTtl(TimeSpan.FromSeconds(settings.TtlSeconds), settings.TtlEnabled);
-        if (settings.TypeOutEnabled && _typeOut?.HasEntry == true && settings.TypeOutGoHotkey != oldGo)
-            _typeOut?.Cancel("Type-out cancelled because the Go hotkey changed.");
         _typeOut?.SetEnabled(settings.TypeOutEnabled);
-        // Apply does not re-register the scoped Escape chord or its active Go.
-        _hotkeys?.Apply(settings.PickerHotkey, settings.ScreenshotHotkey, settings.TypeOutGoHotkey, _typeOut?.HasEntry == true);
+        _hotkeys?.Apply(settings.PickerHotkey, settings.ScreenshotHotkey, settings.TypeOutGoHotkey, settings.TypeOutEnabled);
         _tray?.RefreshHotkeyLabel();
-        _tray?.RefreshTypeOutLabels();
+        NotifyPickerConfiguration();
         ApplyDebugVisibility();
         if (!_typeOut!.HasEntry && !string.IsNullOrWhiteSpace(_hotkeys?.LastError))
             _tray?.Hint("Sideclip", _hotkeys.LastError.Trim());
     }
 
-    private void OpenHotkeySettings()
+    private void OpenSettings()
     {
-        var form = new HotkeySettingsForm(_settings);
-        if (form.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-        // Applying hotkeys drops an armed job; say so instead of leaving "Armed" in the tray.
-        _typeOut?.Cancel(_typeOut.HasEntry ? TypeOutSession.HotkeysChangedMessage : null);
-        _settings.PickerHotkey = form.PickerHotkey;
-        _settings.ScreenshotHotkey = form.ScreenshotHotkey;
-        _settings.TypeOutGoHotkey = form.TypeOutGoHotkey;
-        OnSettingsChanged(_settings);
+        _settingsWindows ??= new SettingsWindowHost(
+            () => new SettingsForm(_settings, TrySaveSettings),
+            () => _typeOut?.Cancel(_typeOut.HasEntry ? TypeOutSession.HotkeysChangedMessage : null));
+        _settingsWindows.Open();
+        // A maximized topmost picker otherwise covers the native Settings form.
+        // This is transient: demote Settings again when that picker closes.
+        if (_settingsWindows.Current is { } settingsWindow)
+            settingsWindow.TopMost = _picker?.IsVisible == true;
     }
+
+    private string? TrySaveSettings(AppSettings edited)
+    {
+        _typeOut?.Cancel(TypeOutSession.HotkeysChangedMessage);
+        // Only the fields offered by this form change. Preserve current tray TTL/autostart.
+        var next = _settings.Copy();
+        next.PickerHotkey = edited.PickerHotkey;
+        next.ScreenshotHotkey = edited.ScreenshotHotkey;
+        next.TypeOutGoHotkey = edited.TypeOutGoHotkey;
+        next.TypeOutEnabled = edited.TypeOutEnabled;
+        next.TypeOutDelayMs = Math.Clamp(edited.TypeOutDelayMs, 0, 250);
+        if (_hotkeys is null || !_hotkeys.TryApply(next.PickerHotkey, next.ScreenshotHotkey, next.TypeOutGoHotkey, next.TypeOutEnabled))
+        { NotifyPickerConfiguration(); return _hotkeys?.LastError ?? "Shortcut registration is unavailable."; }
+        try { SettingsManager.Save(next); }
+        catch (Exception)
+        {
+            _hotkeys.TryApply(_settings.PickerHotkey, _settings.ScreenshotHotkey, _settings.TypeOutGoHotkey, _settings.TypeOutEnabled);
+            NotifyPickerConfiguration();
+            return "Settings could not be saved. Previous configuration kept. " + (_hotkeys.LastError ?? "");
+        }
+        _settings.CopyFrom(next);
+        _typeOut?.SetEnabled(next.TypeOutEnabled);
+        _tray?.RefreshHotkeyLabel();
+        NotifyPickerConfiguration();
+        return null;
+    }
+
+    private void NotifyPickerConfiguration()
+    {
+        // Agreed picker-owned API: empty = unassigned; null = unavailable.
+        _picker?.UpdateTypeOutHelp(_settings.TypeOutEnabled, CurrentTypeOutShortcutDisplay);
+    }
+
+    private string? CurrentTypeOutShortcutDisplay =>
+        TypeOutShortcutDisplay(_settings.TypeOutGoHotkey, _hotkeys?.TypeOutRegistered == true);
+
+    internal static string? TypeOutShortcutDisplay(string? configured, bool registered) =>
+        string.IsNullOrWhiteSpace(configured) ? "" : registered ? configured : null;
 
     private void ApplyDebugVisibility()
     {
@@ -192,13 +225,23 @@ public partial class App : System.Windows.Application
         if (_history is null || _watcher is null) return;
         if (_picker is not null) { _picker.Activate(); return; }
 
-        var restore = NativeMethods.GetForegroundWindow();
-        _picker = new PickerWindow(_history.PickerEntries(), restore, CommitPick, _settings.TypeOutEnabled);
+        _typeOut?.Cancel();
+        var restore = IntPtr.Zero;
+        _picker = new PickerWindow(_history.PickerEntries(), restore, CommitPick, _settings.TypeOutEnabled, CurrentTypeOutShortcutDisplay);
         _picker.Deleted += entry => _history.RemoveEntry(entry);
-        _picker.TypeOutRequested += entry => _typeOut?.Arm(entry);
+        _picker.CandidateSelected += entry => _typeOut?.SelectCandidate(entry);
+        _picker.CandidateInvalidated += () => _typeOut?.Cancel();
+        _picker.Activated += (_, _) => _typeOut?.RefreshCancellation(true);
+        _picker.Deactivated += (_, _) => _typeOut?.RefreshCancellation(false);
         _picker.Cleared += ClearHistory;
         _picker.Cancelled += () => FinishPick(new PickResult { Kind = "cancel" });
-        _picker.Closed += (_, _) => _picker = null;
+        _picker.Closed += (_, _) =>
+        {
+            _picker = null;
+            if (_settingsWindows?.Current is { } settingsWindow) settingsWindow.TopMost = false;
+            _typeOut?.RefreshCancellation(false);
+        };
+        NotifyPickerConfiguration();
         _picker.Show();
         _picker.Activate();
     }
@@ -240,17 +283,20 @@ public partial class App : System.Windows.Application
             if (string.IsNullOrEmpty(text)) return;
             _watcher.SetTextSuppressing(text, entry.IsSecret);
         }
-        if (!paste) return;
-        Dispatcher.BeginInvoke(new Action(() =>
-        {
-            Thread.Sleep(40);
-            InputSender.CtrlV();
-        }), System.Windows.Threading.DispatcherPriority.Background);
     }
 
-    private void GoTypeOut() => _typeOut?.Go(Math.Clamp(_settings.TypeOutDelayMs, 0, 250));
+    private void GoTypeOut()
+    {
+        if (_hotkeys?.TypeOutRegistered == true)
+            _typeOut?.Go(Math.Clamp(_settings.TypeOutDelayMs, 0, 250));
+    }
     private void CancelTypeOut() => _typeOut?.Cancel(TypeOutSession.IdleMessage);
-    private void ReportTypeOut(string message) => _tray?.RefreshTypeOutStatus(message);
+
+    private void ReportTypeOut(string message)
+    {
+        _tray?.RefreshTypeOutStatus(message);
+        _settingsWindows?.Current?.SetStatus(message);
+    }
 
     private void TypeScreenshotPath()
     {
@@ -279,6 +325,7 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         _typeOut?.Dispose();
+        _settingsWindows?.Dispose();
         _picker?.Close();
         _ipc?.Dispose();
         _hotkeys?.Dispose();

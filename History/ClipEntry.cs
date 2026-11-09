@@ -27,7 +27,7 @@ public sealed class ClipEntry
         _payload = string.IsNullOrEmpty(text) ? null : text.ToCharArray();
     }
 
-    public bool HasPayload => _payload is { Length: > 0 } || IsImage;
+    public bool HasPayload { get { lock (_payloadGate) return _payload is { Length: > 0 } || IsImage; } }
 
     public string? TryGetText()
     {
@@ -37,24 +37,26 @@ public sealed class ClipEntry
             return new string(_payload);
         }
     }
+    // Only the running job may own this bounded wipeable copy.
+    internal char[]? CopyTypeOutPayload()
+    {
+        lock (_payloadGate)
+        {
+            if (IsImage || _payload is not { Length: > 0 } || _payload.Length > TypeOut.TypeOutText.MaxLength) return null;
+            return (char[])_payload.Clone();
+        }
+    }
     // Kept for callers that explicitly want null on a secret entry.
     public string? TryGetNonSecretText() => IsSecret ? null : TryGetText();
 
     public bool PayloadEquals(string? live)
     {
-        if (_payload is null || live is null)
-            return false;
-        if (live.Length != _payload.Length)
-            return false;
-        for (var i = 0; i < _payload.Length; i++)
+        lock (_payloadGate)
         {
-            if (live[i] != _payload[i])
-                return false;
+            if (_payload is null || live is null || live.Length != _payload.Length) return false;
+            return _payload.AsSpan().SequenceEqual(live.AsSpan());
         }
-
-        return true;
     }
-
     public void WipePayload()
     {
         lock (_payloadGate)

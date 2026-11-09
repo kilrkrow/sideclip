@@ -17,7 +17,7 @@
 Sideclip is a Windows tray clipboard that sits beside Win+V. It never steals Win+V.
 
 - Watches the clipboard. Non-secrets persist locally. Secrets stay in memory, expire, and may appear in the picker until wiped (always-secret for 1Password.exe / 1Password-BrowserSupport owner or foreground; browsers use the heuristic).
-- Picker: Ctrl+Shift+Win+V (type to filter, Enter paste, Shift+Enter copy). Optional type-out is off by default and supports live TTL-bounded secrets without clipboard use.
+- Picker: Ctrl+Shift+Win+V (type to filter; Enter, Shift+Enter, double-click, and Copy put text or images on the ordinary Windows clipboard only). Optional clipboard-free text type-out is off by default (Settings...): deliberately select text, focus the destination, then press the configured shortcut.
 - Screenshot path: Ctrl+Shift+Win+P types the newest file in Pictures\Screenshots.
 - CLI: sideclip --shots, --newest, --picker, --pick.
 - Agent skill (Grok / Codex): copies to ~/.agents/skills/sideclip so /sideclip opens the picker.

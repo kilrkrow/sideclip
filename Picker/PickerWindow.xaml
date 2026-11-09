@@ -67,17 +67,23 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Margin="0,2,16,0" TextWrapping="Wrap">
-                        <Run Text="Type selected text (feature must be enabled in tray settings)." />
+                    <TextBlock x:Name="FooterHelp"
+                               Grid.Column="0"
+                               Margin="0,2,16,0"
+                               TextWrapping="Wrap"
+                               AutomationProperties.Name="Sideclip picker status and keyboard help"
+                               AutomationProperties.LiveSetting="Polite">
+                        <Run Text="Sideclip 0.3.0 - Select text for clipboard-free type out." />
                         <LineBreak />
                         <Run x:Name="TypeOutReason" Text="Images cannot be typed." Foreground="#ABAFBC" />
                         <LineBreak />
-                        <Run Text="Press Ctrl+T or Arm for type-out, target the destination, then press the Go hotkey. Esc cancels. Never uses clipboard." Foreground="#ABAFBC" />
+                        <Run x:Name="NavHelp" Foreground="#ABAFBC" />
+                        <LineBreak />
+                        <Run x:Name="CopyHelp" Foreground="#ABAFBC" />
+                        <LineBreak />
+                        <Run x:Name="TypeOutHelp" Foreground="#ABAFBC" />
                     </TextBlock>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
-                        <Button x:Name="TypeOutButton" Content="Arm for type-out (Ctrl+T)" ToolTip="Ctrl+T or Arm: target the destination, then use Go."
-                                Margin="0,0,8,0" Style="{StaticResource PickerButton}"
-                                Click="OnTypeOutClick" />
                         <Button x:Name="CopyButton" Content="Copy" ToolTip="Copy without pasting"
                                 Style="{StaticResource PickerButton}"
                                 Click="OnCopyClick" />
@@ -114,7 +120,6 @@
                              Background="Transparent"
                              Foreground="#E5E9F6"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             MouseDoubleClick="OnRowActivate"
                              SelectionChanged="OnSelectionChanged">
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
@@ -124,6 +129,7 @@
                                 <Setter Property="Foreground" Value="#E5E9F6" />
                                 <Setter Property="Background" Value="Transparent" />
                                 <EventSetter Event="MouseDoubleClick" Handler="OnRowActivate" />
+                                <EventSetter Event="PreviewMouseLeftButtonDown" Handler="OnRowChoose" />
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="ListBoxItem">

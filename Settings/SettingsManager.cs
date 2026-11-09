@@ -41,9 +41,6 @@ internal static class SettingsManager
                 if (s.TtlSeconds > 300) s.TtlSeconds = 300;
                 if (s.TypeOutDelayMs < 0) s.TypeOutDelayMs = 0;
                 if (s.TypeOutDelayMs > 250) s.TypeOutDelayMs = 250;
-                if (Hotkeys.HotkeyParser.IsForbidden(s.TypeOutGoHotkey)) s.TypeOutGoHotkey = "Ctrl+Win+Shift+T";
-                if (Hotkeys.HotkeyParser.IsForbidden(s.PickerHotkey)) s.PickerHotkey = "Ctrl+Shift+Win+V";
-                if (Hotkeys.HotkeyParser.IsForbidden(s.ScreenshotHotkey)) s.ScreenshotHotkey = "Ctrl+Shift+Win+P";
                 return s;
             }
         }
@@ -58,12 +55,19 @@ internal static class SettingsManager
     public static void Save(AppSettings settings)
     {
         Directory.CreateDirectory(Dir);
-        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, JsonOpts));
+        var temporary = SettingsPath + ".tmp";
+        try
+        {
+            File.WriteAllText(temporary, JsonSerializer.Serialize(settings, JsonOpts));
+            File.Move(temporary, SettingsPath, overwrite: true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
         ApplyAutostart(settings.Autostart);
     }
 
     public static void ApplyAutostart(bool enabled)
     {
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SIDECLIP_DATA_DIR"))) return;
         const string keyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         try
         {

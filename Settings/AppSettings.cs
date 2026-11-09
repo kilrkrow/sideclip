@@ -11,4 +11,14 @@ internal sealed class AppSettings
     public bool TypeOutEnabled { get; set; }
     public int TypeOutDelayMs { get; set; } = 12;
     public string TypeOutGoHotkey { get; set; } = "Ctrl+Win+Shift+T";
+    public AppSettings Copy() => (AppSettings)MemberwiseClone();
+
+    public void CopyFrom(AppSettings other)
+    {
+        TtlSeconds = other.TtlSeconds; TtlEnabled = other.TtlEnabled;
+        Autostart = other.Autostart; ShowDebugWindow = other.ShowDebugWindow;
+        PickerHotkey = other.PickerHotkey; ScreenshotHotkey = other.ScreenshotHotkey;
+        TypeOutGoHotkey = other.TypeOutGoHotkey; TypeOutEnabled = other.TypeOutEnabled;
+        TypeOutDelayMs = other.TypeOutDelayMs;
+    }
 }

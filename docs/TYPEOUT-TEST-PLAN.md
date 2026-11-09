@@ -1,100 +1,135 @@
 # Sideclip 0.3.0 type-out test plan
 
-## Scope and headless evidence
+Generic shipped plan for the no-Arm redesign. Evidence folders and machine names belong in private scratch ledgers, not in this file. Version remains 0.3.0. Author identity in public metadata is kilrkrow only. Authored UI strings use ASCII `...`.
 
-Headless checks only; the user-facing evidence batch is deferred until the user has consented to app launch/input injection. No Sideclip UI, Notepad, browser, or automated input was launched during the build/test phase.
+## Approved product behavior (source of truth for docs)
 
-Windows verification environment: Windows 11, VENGEANCE, .NET 8, PowerShell 5.1.
-Build worktree: `D:\_dev\_scratch\sideclip-typeout` (an isolated branch; original checkout preserved).
+1. Tray exposes **Settings...** (single entry for hotkeys and type-out options; no separate Hotkeys dialog and no Arm/Go tray feature menus). Settings is single-instance; closing it leaves the tray running.
+2. Settings holds picker / screenshot path / text-only type-out shortcuts, **Enable clipboard-free text type-out**, and bounded delay 0-250 ms (dependent control disabled when off). Blank chord = unassigned. Reserved chords and duplicates are refused inline (no hidden fallback). Defaults never bind Win+V, Ctrl+Win+V, or Ctrl+Win+P.
+3. Type-out flow: deliberately select a picker text entry -> focus an external destination -> press the configured text-only shortcut. No Arm button, Ctrl+T arm path, armed phase, or tray Go send action.
+4. Enter, Shift+Enter, double-click (row/preview), and Copy put text or images on the ordinary Windows clipboard only. Sideclip does not simulate Ctrl+V there. Ordinary user Ctrl+V / Paste remains normal. Type-out is text-only and clipboard-free.
+5. Candidate identity is single-use and separate from Latest/clipboard. Programmatic highlight / filter rebuild / new capture must not silently prime or retarget. Image selection clears an older text candidate. Esc: picker filter-first, then invalidate; global Esc only while pending (outside picker) or running.
+6. Completion reports keys sent and states "Insertion not verified." Tab/Enter are real navigation/submit keys. Native HWND/control focus is checked; browser DOM focus is not visible.
 
-Commands run:
+## Comparison references (not dependencies)
+
+Consulted official docs (compare deliberate targeting / literal text / cancellation / limitations; do not claim Sideclip implements their full feature sets):
+
+- AutoHotkey v2 Send / SendText: https://www.autohotkey.com/docs/v2/lib/Send.htm -- SendText sends characters literally (Unicode packets); Text mode still maps ``n/`r/`t/`b`` to Enter/Tab/Backspace; Send is a broader keystroke/macro surface than Sideclip.
+- KeePass Auto-Type: https://keepass.info/help/base/autotype.html -- explicit sequences, window-title matching, global hotkey, configurable delay, documented UIPI/RDP/layout limits; Sideclip has no sequence language, no window-title matcher, and no privilege elevation path.
+- Microsoft RegisterHotKey / MOD_NOREPEAT, SendInput, GetGUIThreadInfo, standard clipboard formats: learn.microsoft.com Win32 docs.
+
+Sideclip intentionally offers one deliberate text source, one configured shortcut, bounded paced chunks, Esc cancel, and honest sent-not-inserted status. No claim of AutoHotkey or KeePass parity.
+
+## Headless unit / source gate (repeatable)
+
+Run on a Windows .NET 8 host with an isolated `SIDECLIP_DATA_DIR` and Autostart=false for the test process. Do not alter unrelated HKCU Run entries.
 
 ```powershell
 dotnet build Sideclip.csproj -c Release
-
 dotnet test Sideclip.Tests\Sideclip.Tests.csproj -c Release
-# 61 passed, 0 failed, 0 skipped
 ```
 
-The tests use fake sinks and focus probes, not actual input. They verify exact UTF-16 order (including an emoji), newlines/tabs, malformed surrogate rejection, NUL/control rejection, cancellation between chunks and during delay, partial/zero SendInput reporting, focus change, stale/wiped secret, single job, disabled default, legacy/current persistence, and existing picker/screenshot defaults. `ClipEntry` synchronizes payload reads and wipes; selecting or typing does not start a TTL timer or change `CopiedAt`.
+When other builders share the tree, prefer isolated `-p:OutputPath=` / `-p:IntermediateOutputPath=` under a scratch folder inside the worktree so bin/obj races are avoided.
 
-## Selected mechanism
+Unit coverage (fake sinks / focus probes; not physical input) is expected to include: UTF-16 order and surrogate integrity, newline/tab normalization, malformed/NUL/control refusal, cancellation between chunks and during delay, partial/zero SendInput reporting, focus/window/control change, stale/wiped/expired secret, single-use trigger, disabled default, settings persistence without priming a source, picker copy-only Enter mapping, native two-control positive and negative focus tests, registration lifetime / collision helpers, and docs/fixture stale-wording guards when present.
 
-Type-out is OFF by default. Tray `Type selected text` -> `On` stores the setting. Its submenu owns pacing (0-250 ms) and the Go assignment hint; `Hotkeys...` edits Go. Go defaults to `Ctrl+Win+Shift+T`, may be cleared while the feature is off, and cannot duplicate picker/screenshot assignments or use reserved `Win+V`, `Ctrl+Win+V`, or `Ctrl+Win+P`.
+## Manual / published-exe acceptance matrix
 
-Select a text entry, click `Arm for type-out`, choose a destination, then press the Go hotkey (or tray status menu -> Go). Arm restores the previous foreground window, does not type, and does not copy. Go and Esc are registered only while armed/running. Registration failure does not arm. Pressing Go twice cannot overlap jobs. `Copy` and Enter/Shift+Enter keep their old clipboard routes; type-out uses no clipboard or `SetTextSuppressing` call.
+Use a published self-contained win-x64 build, isolated data dir, synthetic destinations only. No live secrets in screenshots or logs. Record expected vs actual hex or exact UTF-16 where useful.
 
-A bounded batch (at most 16 UTF-16 code units, never splitting a surrogate pair) is sent by `KEYEVENTF_UNICODE`, with `wVk == 0`, down/up per code unit, on a background task. Before each batch it checks cancellation, entry availability/payload, and the exact foreground HWND captured at Go. Entry deletion, clearing, or expiry cancels an armed/running selection. History's own TTL timers are the only TTL clocks. A payload array is cleared after the job; no clipboard, history, CLI, IPC, disk, log, or diagnostic payload copies are added.
+### A. Clipboard copy (text and image)
 
-CRLF/LF are normalized to Enter keystrokes and tabs to Tab keystrokes. The initial Unicode-only implementation dropped CR/Tab in Notepad; real targets require these key packets. All other text uses Unicode packets. This makes multi-line edits predictable but target keyboard commands are not macros. NUL, unsupported C0 controls and malformed UTF-16 are rejected before sending. Maximum selected text is 1,000,000 UTF-16 units.
+| Case | Action | Expect |
+| --- | --- | --- |
+| text Enter | select text, Enter | clipboard gets exact text once; destination unchanged until user Ctrl+V |
+| text Shift+Enter | same | clipboard only |
+| text double-click | row or preview | clipboard only |
+| text Copy button | click Copy | clipboard only |
+| image copy | Enter/double-click/Copy on synthetic PNG | clipboard image; no caption/path typed; older text candidate cleared |
+| normal paste | user Ctrl+V into isolated editor / image viewer | exact content or pixel/hash match |
 
-## Required manual UI evidence batch (pending)
+### B. No-Arm type-out
 
-Run only after warning the user and agreeing where input may go. Set `SIDECLIP_DATA_DIR` to an empty scratch data directory for Sideclip and its terminal before starting it. Use a generic local user, no live credentials, and never capture a secret in a screenshot. Close all unrelated foreground work before injecting keys.
+| Case | Steps | Expect |
+| --- | --- | --- |
+| happy path | deliberate select, leave picker, focus Notepad, shortcut once | exact text once; clipboard sentinel unchanged |
+| no source | shortcut with no deliberate select | no-op / status only; no Latest fallback |
+| programmatic highlight | open picker / filter rebuild only | no candidate |
+| new capture | select text, capture unrelated clip, shortcut | still original text |
+| filter away | select, filter removes identity | candidate cleared; row-zero highlight does not replace it |
+| Esc cancel | select, Esc (after filter cleared) | candidate cleared |
+| image after text | select text, then image | text candidate cleared |
+| second press | after one run, press shortcut again | no second send without new select |
+| own UI refuse | shortcut while picker/Settings focused | refuse; no type into Sideclip |
+| off / unassigned / unavailable | toggle off, blank chord, or registration failure | cannot type; help/status honest |
 
-Preparation:
-1. Build/publish Release to a scratch folder, keeping the original 0.3.0 icon.
-2. Run `Sideclip.exe` from the scratch published folder configured with the isolated data directory. Record initial tooltip and About read-backs: `Sideclip 0.3.0`; `Type selected text` off by default; fresh settings file has TypeOutEnabled false, no armed state, default Go.
-3. Place a recorded generic clipboard sentinel in the Windows clipboard. Use scripted clipboard assertions only at clearly marked checkpoints. Do not put any real credential on it.
-4. Populate generic text history entries for multi-line, tabs/quotes, accented, and emoji; reproduce marked secret using a generic `correct-horse-battery-staple` heuristic test sample with TTL 8 or 12 seconds. Confirm one image item and a wiped item are not eligible. Persisted history and runtime logs must not include the test secret.
+### C. Six-case Unicode / control matrix (Notepad)
 
-### Acceptance and existing paste/copy
-1. Open picker, select a specific multi-line nonsecret, click Enter. Verify exactly one expected paste into Notepad; record clipboard and destination text.
-2. Select separate generic text, Shift+Enter. Verify clipboard equals that text without Ctrl+V being sent to Notepad. Shift+Enter/copy semantics remain existing behavior.
-3. Select a multi-line entry, click `Arm for type-out`. Wait at least two seconds at an unrelated destination: nothing should be typed in that interval. Place the caret in Notepad manually, then press Go. Compare every character once, in order. Ensure Go and Esc registration occur only from Arm until finish.
+ASCII; CRLF/LF normalization; tabs/quotes; BMP accents/non-Latin; supplementary pairs; mixed CR/tab ordering. Refuse empty/NUL/control/malformed UTF-16/image for type-out.
 
-### Text matrix
+### D. Fixture browser page
 
-| Case | Expected input | Result / actual | Pass |
-| --- | --- | --- | --- |
-| newlines | `one\r\ntwo\nthree` normalized to three lines | | |
-| tabs/quotes | `indent\tA\t"quoted" separators <>&` | | |
-| ASCII | `Ab 09-_=[],./\` | | |
-| BMP | `cafe e accent aigu` plus a second accented sample | | |
-| supplementary | `A[emoji]B` with a suitable generic emoji | | |
-| empty/control | empty, NUL/control, malformed UTF-16 test fixture | no Arm; reason displayed | |
+Open `fixtures/paste-blocked.html` in a local browser. Confirm: normal keyboard text accepted; paste/drop blocked; on-page note documents Tab/Enter may leave the field. Do not claim Sideclip reads DOM focus. Save only synthetic readbacks.
 
-Use `cs` literal encoding for the malformed UTF-16 test rather than saving malformed text in this document. Confirm no split/duplicate surrogate halves. Capture a read-back list of picker Arm eligibility and target-relevant error labels. Read UI text from the same published build rather than just searching source.
+### E. Screenshot-path regression
 
-### Paste-blocked fixture
+With a test-owned Pictures\Screenshots fixture (no personal photo access), shortcut types the exact quoted newest path. Hash/ownership cleanup afterward.
 
-Open `fixtures/paste-blocked.html` locally in a portable available viewer/browser approved for this batch. It is generic, local, external-network-free, and its textarea prevents `paste` and simulated `beforeinput paste` while accepting typing/newline/tab.
+### F. Native two-control stop
 
-1. Focus the textarea. Confirm via the page that a normal simulated paste remains blocked and field text stays unchanged.
-2. Repeat select -> Arm -> manual target -> Go with tab/newline/emoji test text. Compare output exactly; the fixture's UTF-8 text read-back area should display what arrived. Save only synthetic, secret-free UI evidence.
+Live two-TextBox (or equivalent native edits): positive stay-in-control completes; switching focused control mid-job stops before later text. Unit positives/negatives already exist; live UI is a separate ledger row.
 
-### Cancellation, TTL, focus, failure, cleanup
-1. Long entry: Set pacing 80 ms. Select, Arm, target, Go. As some input arrives press Esc while Notepad (not Sideclip/tray) stays focused. Note wall-clock key time and last subsequent character; wait 3 seconds; nothing further may appear. A second Esc does no harm.
-2. Restart long job and close destination, switch foreground to another generic editor, and delete the matching entry or Clear history. Each must stop input/no ghost job. Press End-to-About without input focus; verify status failure contains no payload.
-3. Clear selection while armed; ensure no settings/state remains armed after restart and no hotkey is active when idle.
-4. Enable a generic synthetic secret, Arm while TTL live, Go, verify output while live. Repeat Arm then expire before Go: unavailable, nothing sent. Repeat Go with long content then expire/clear midstream: no later chunks may appear. Type-out must not extend TTL: use simple read-backs of the TTL row alone; do not save the actual credential in test evidence.
-5. Force simulated UIPI/detection failure with an elevated test target only if user explicitly approves the admin interaction (not part of unattended run). Otherwise a controlled fake-sink's failure is headless evidence; explain which case is pending.
-6. Exit Sideclip while armed and while running. Wait 3 seconds in recorder; no later characters appear. Reopen from same isolated data dir: off/on persists, Go and delay persist, never armed or running. Tray visible label About 0.3.0, icon present, no console/debug windows. Type chosen hotkeys via the settings dialog; duplicates/reserved examples must be shown as error. Screenshot hotkey remains Ctrl+Shift+Win+P and existing path typing remains unchanged (manual call/site test still pending).
+### G. Registration / Settings
 
-### Data verification checklist
-Record SHA256 hashes of `settings.json`, `history.json`, image temp files, and any runtime logs before and after a normal and secret fake-sink/manual job. Read the actual file bodies under scratch and search for controlled synthetic payloads; never screenshot evidentiary file content if the secret is live. Files must not contain a new secret or typed-history copies. Search project/runtime logs for these exact stop literals only in memory, not in a dump: diagnostics must not include typed payloads.
+Fresh/legacy default off; enable + Apply registers trigger even with no candidate; blank releases; duplicate/reserved refused; external collision rolls back honestly; reopen Settings raises same instance; Apply cancels prior source; Close without Apply does not silently re-prime.
 
-## Target keys: Tab and Enter (r2)
+## Soak plan (not an in-session release gate)
 
-Tab (0x09) and Enter (CR/LF normalized to CR, 0x0D) are sent as virtual-key presses so Notepad and other plain editors get real indentation and new lines. The target decides what those keys mean. Observed on JARVIS (Windows Server 2022, Microsoft Edge, `fixtures/paste-blocked.html` textarea, build 14b25c3): the entry `tab<Tab>here<LF>next` arrived as `tabe<LF>next`. Tab moved focus out of the textarea, part of the following text did not land in the field, and the old status still said `Type-out finished.` The same entry was exact in Notepad. The r2 rerun (build f065262) on the same fixture produced `tabhere<LF>next` with status `Type-out sent 13 of 13 keys (2 Tab/Enter). Insertion not verified.`; the Tab never reached the field.
+Repeatable longer runs; record OS, destination, expected/actual, timing, status. No live secrets or personal paths in evidence.
 
-Behavior since r2:
-- The picker's eligibility line adds a warning when the selected entry has Tab or Enter/CR/LF: `Warning: contains Tab or Enter. They are sent as real key presses, so the target may treat them as navigation or submit (for example, Tab moves focus in browsers).`
-- Arming such an entry reports `Armed. Tab/Enter are real keys; may move focus or submit. Go types, Esc cancels.`
-- A finished job reports `Type-out sent N of N keys[ (K Tab/Enter)]. Insertion not verified.` Sideclip never claims verified insertion.
-- A chunk ends right after each Tab/Enter key, so the next chunk always rechecks the foreground first. Before each chunk, Sideclip compares the foreground thread's focused Win32 control (`GetGUIThreadInfo.hwndFocus`) with the one it saw at Go. If it changed, the job stops with `Type-out stopped because focus moved to another control.` This works at window/control level only. Browsers and other single-HWND apps keep one control, so DOM-level focus moves (the Edge case above) are not detected or prevented.
-- An expired, cleared or deleted source keeps its reason in the final status (for example `Type-out stopped because the entry expired (secret TTL).`) instead of a generic cancel.
-- Turning type-out off while armed reports `Type-out turned off. Nothing is armed.` (or `Type-out stopped because it was turned off.` while typing) and releases Go and Esc. Turning it back on reports `Type-out idle. Arm an entry to start.`; saving Hotkeys... while armed reports `Type-out cancelled because hotkeys changed. Arm again.`
-- There is no clipboard fallback and no browser automation.
+1. Long entry with pacing 80 ms; Esc from destination mid-stream; second Esc harmless.
+2. Focus switch, destination close, clear/delete/expiry, Settings change, and app exit while pending and while running.
+3. Competing / held trigger attempts (document whether MOD_NOREPEAT was requested in source vs physical hold verified).
+4. Sleep/wake, RDP, elevated target, keyboard layout change -- mark unverified unless explicitly run.
+5. Layout/DPI and tray restart with same isolated data dir: settings persist, never primed.
 
-## Limitations / production comparison
+## Honest evidence ledger template
 
-Microsoft documents that SendInput is synchronous, serial within one call, does not reset keyboard state, and is subject to UIPI. Therefore elevated targets/secure desktops, games, remote desktops, hostile targets and keyboard-layout/ANSI targets require separate verification and may fail. Type-out does not elevate, focus-grab, use clipboard paste, or promise global compatibility.
+Fill per integrate / final critic. Do not promote unit or source rows to runtime PASS.
 
-A 16-unit chunk is the maximum unstoppable unit; focus can change between its last user32 check and Windows accepting the batch. A foreground HWND match does not prove that a text caret is active. The user must deliberately position the destination; a focus/selection race remains. Keys already held by the user may interfere with Windows. Go releases common Ctrl/Shift/Win modifiers once, consistent with current input infrastructure, not a brute-force focus lock. Esc is a globally registered hotkey only while armed/running; exclusive Esc hotkey collision is surfaced and disallowed.
+| ID | Claim | Kind | Status | Notes |
+| --- | --- | --- | --- | --- |
+| U1 | Full `dotnet test` suite green | unit | | raw log path |
+| U2 | Native two-control unit +/- | unit | | |
+| U3 | Copy-only Enter mapping | unit/source | | |
+| S1 | No Arm/Go/Enter-paste in shipped docs | source | | docs/fixture tests |
+| S2 | Trigger registration requests MOD_NOREPEAT | source/unit | | physical hold separate |
+| R1 | Notepad no-Arm happy path + sentinel | runtime | | |
+| R2 | Enter copy-only published exe | runtime | | |
+| R3 | Capture does not retarget | runtime | | |
+| R4 | Six-case Unicode matrix | runtime | | |
+| R5 | Image clipboard paste | runtime | | |
+| R6 | paste-blocked.html keyboard vs paste | runtime | | |
+| R7 | Screenshot-path quoted type | runtime | | |
+| R8 | Live two-control stop | runtime | | |
+| R9 | Settings single-instance / collision | runtime | | |
+| X1 | Physical Win-key capture in Settings | unverified | leave unverified unless run |
+| X2 | Physical held-key repeat | unverified | MOD_NOREPEAT request != physical proof |
+| X3 | Browser DOM focus stop | limitation | cannot see DOM; warned |
+| X4 | Verified insertion | limitation | status is sent-not-inserted |
+| X5 | UIPI / elevated / game / RDP soak | unverified | |
 
-AutoHotkey SendText uses literal Unicode packets; KeePass Auto-Type supports explicit sequences, target selection, configurable delay, and documented privileges/keyboard-layout limitations. Sideclip intentionally offers only one text entry, explicit Arm/Go, bounded paced chunks, Esc, and no macro language or focus grabbing. No claim of general automation parity is made. Sleep/wake and UIPI/RDP/layout testing is pending manual soak.
+## Packaging recommendations (do not run final zip while parallel builders active)
 
-## Further soak (not a release gate)
+`scripts\publish-release.ps1 -Version 0.3.0` remains the packaging entrypoint: self-contained win-x64 publish, `artifacts\Sideclip-win-x64-v0.3.0.zip`, print SHA256, skill copy into zip. Recommendations only until integrate + final UI critic:
 
-Repeat long entries, cancel at varied offsets, slow apps, remote/elevated targets, keyboard-layout changes, user input during jobs, sleep/wake and tray restart. Record target OS/destination/expected/actual, last-unit timing, status, and any partial-send behavior; no live secrets or private paths in evidence.
+1. Run publish only after pieces a-d are integrated and the vertical slice re-pass is green.
+2. Keep Version 0.3.0 aligned across csproj / zip name / About / Settings title / chocolatey when maintainers bump later -- do not invent a new version policy here.
+3. After zip, case-insensitive scan text-bearing artifacts for owner given name/surname; stop on authored hits.
+4. Chocolatey VERIFICATION/SHA update is a maintainer step after the GitHub Release asset exists (`pack/chocolatey/README.md`).
+5. Prefer isolated `SIDECLIP_DATA_DIR` for any smoke of the published exe; Autostart=false; do not rewrite unrelated HKCU Run values.
+
+## Fixture
+
+`fixtures/paste-blocked.html` is a generic local page: accepts supported keyboard text, blocks paste/drop, and states the Tab/Enter navigation limitation plainly. No network, libraries, selectors product API, or clipboard read.

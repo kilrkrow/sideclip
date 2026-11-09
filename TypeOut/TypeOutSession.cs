@@ -14,16 +14,19 @@ internal sealed class TypeOutSession : IDisposable
     private readonly Func<bool> _activateHotkeys;
     private readonly Action _deactivateHotkeys;
     private ClipEntry? _entry;
-    private char[]? _armedPayload;
+    private ClipEntry? _candidate;
     private CancellationTokenSource? _cancel;
     private Task<TypeOutResult>? _running;
     private bool _enabled;
     private bool _disposed;
+    private bool _starting;
     private string? _stopReason;
 
 
-    public bool HasEntry => _entry is not null;
-    public bool IsActive => _running is not null;
+    public bool HasEntry => _candidate is not null || _entry is not null;
+    internal ClipEntry? Candidate => _candidate;
+    private bool _pickerForeground;
+    public bool IsActive => _starting || _running is not null;
 
     public TypeOutSession(
         Func<ClipEntry, bool> isLive,
@@ -49,65 +52,84 @@ internal sealed class TypeOutSession : IDisposable
     public static bool CanType(ClipEntry entry, bool isLive) =>
         isLive && entry.HasPayload && !entry.IsImage && TypeOutText.Validate(entry.TryGetText()) is null;
 
-    public bool Arm(ClipEntry entry)
+    // Selection retains identity only. The payload is read under its gate at trigger time.
+    public bool SelectCandidate(ClipEntry entry)
     {
-        if (!_enabled || _running is not null || !CanType(entry, _isLive(entry))) { Reject(); return false; }
-        if (!RegisterCancellation()) return false;
-        _armedPayload = entry.TryGetText()!.ToCharArray();
-        _entry = entry;
+        if (_disposed || IsActive) return false;
+        Cancel();
+        if (!_enabled || !CanType(entry, _isLive(entry))) { Reject(); return false; }
+        _candidate = entry;
         _stopReason = null;
         _report(TypeOutText.HasTargetKeys(entry.TryGetText())
-            ? TypeOutText.ArmedTargetKeyWarning
-            : "Armed: target the destination, then press Go. Esc cancels.");
+            ? TypeOutText.SelectedTargetKeyWarning
+            : "Selected: focus destination, then use the type-out shortcut. Esc cancels.");
+        RefreshCancellation(_pickerForeground);
         return true;
     }
 
-    private bool RegisterCancellation()
+    // Keep picker-local Esc available for filter-first cancel. Failure while pending
+    // is tolerated; starting a job requires successful Esc registration.
+    public void RefreshCancellation(bool pickerForeground)
     {
-        try
-        {
-            if (_activateHotkeys()) return true;
-            _report("Type-out could not be armed: the Go or Esc hotkey could not be registered.");
-        }
-        catch (Exception ex) { _report("Type-out could not be armed: " + ex.Message); }
-        ClearArmedEntry();
-        return false;
+        _pickerForeground = pickerForeground;
+        if (IsActive) return;
+        _deactivateHotkeys();
+        if (_candidate is not null && !pickerForeground && !_activateHotkeys())
+            _report("Pending Esc unavailable; picker Esc still cancels. Typing requires Esc.");
     }
 
-    internal const string TurnedOffMessage = "Type-out turned off. Nothing is armed.";
+    internal const string TurnedOffMessage = "Type-out turned off. No source selected.";
     internal const string StoppedOffMessage = "Type-out stopped because it was turned off.";
-    internal const string IdleMessage = "Type-out idle. Arm an entry to start.";
-    internal const string HotkeysChangedMessage = "Type-out cancelled because hotkeys changed. Arm again.";
-
+    internal const string IdleMessage = "Type-out idle. Select a text entry deliberately.";
+    internal const string HotkeysChangedMessage = "Type-out cancelled because settings changed. Select again.";
     public void SetEnabled(bool enabled)
     {
         var wasEnabled = _enabled;
         _enabled = enabled;
         if (enabled) { if (!wasEnabled) _report(IdleMessage); return; }
-        if (_entry is null) { Cancel(); return; }
-        // Replace a stale "Armed" status instead of leaving it in the tray.
-        if (_running is not null) { _stopReason = StoppedOffMessage; Cancel(StoppedOffMessage); }
+        if (!HasEntry) { Cancel(); return; }
+        if (IsActive) { _stopReason = StoppedOffMessage; Cancel(StoppedOffMessage); }
         else Cancel(TurnedOffMessage);
     }
 
     public void Go(int delayMilliseconds)
     {
-        if (!_enabled || _running is not null || _armedPayload is null || _entry is null) return;
-        var entry = _entry;
-        if (!CanType(entry, _isLive(entry))) { Cancel("Type-out stopped: the entry is no longer available."); return; }
-        var target = _focus.ForegroundWindow;
-        if (target == IntPtr.Zero) { Cancel("Type-out stopped: there is no destination window."); return; }
-
-        _releaseModifiers?.Invoke();
-        if (_disposed || !ReferenceEquals(_entry, entry)) return;
+        if (_disposed || !_enabled || IsActive) return;
+        var entry = _candidate;
+        _candidate = null;
+        _deactivateHotkeys();
+        if (entry is null) { _report("Type-out: no selected source. Select text in the picker first."); return; }
+        _entry = entry;
+        _starting = true;
         _cancel = new CancellationTokenSource();
         var token = _cancel.Token;
-        var payload = _armedPayload;
-        _armedPayload = null;
-        var runner = _runnerFactory();
-        TryStart(entry, payload, runner, target, delayMilliseconds, token);
+        char[]? payload = null;
+        try
+        {
+            if (!CanType(entry, _isLive(entry))) { _report("Type-out stopped: the entry is no longer available."); return; }
+            var target = _focus.ForegroundWindow;
+            NativeMethods.GetWindowThreadProcessId(target, out var pid);
+            if (target == IntPtr.Zero || pid == Environment.ProcessId)
+            { _report("Type-out refused: focus an external destination window."); return; }
+            if (!_activateHotkeys()) { _report("Type-out refused: Esc cancellation is unavailable."); return; }
+            payload = entry.CopyTypeOutPayload();
+            if (payload is null || !_isLive(entry)) { _report("Type-out stopped: the entry is no longer available."); return; }
+            _releaseModifiers?.Invoke();
+            if (_disposed || token.IsCancellationRequested || !_enabled) return;
+            TryStart(entry, payload, _runnerFactory(), target, Math.Clamp(delayMilliseconds, 0, 250), token);
+            payload = null; // Runner now owns and clears the bounded copy.
+        }
+        catch (Exception)
+        {
+            _report("Type-out failed to start safely. No input job was started.");
+        }
+        finally
+        {
+            _starting = false;
+            if (payload is not null) Array.Clear(payload);
+            if (_running is null) ResetEntry();
+        }
     }
-
     private void TryStart(ClipEntry entry, char[] payload, TypeOutRunner runner, IntPtr target, int delay, CancellationToken token)
     {
         if (_disposed) { Array.Clear(payload, 0, payload.Length); return; }
@@ -124,7 +146,15 @@ internal sealed class TypeOutSession : IDisposable
             }
             finally { Array.Clear(payload, 0, payload.Length); }
         }, CancellationToken.None);
-        _postToUi(() => FinishAsync(_running));
+        var running = _running;
+        try { _postToUi(() => FinishAsync(running)); }
+        catch (Exception)
+        {
+            // If the UI is shutting down, retain completion ownership and stop
+            // the already-started job instead of orphaning its payload/state.
+            _cancel?.Cancel();
+            FinishAsync(running);
+        }
     }
 
     private void FinishAsync(Task<TypeOutResult>? task)
@@ -145,13 +175,13 @@ internal sealed class TypeOutSession : IDisposable
 
     public void EntryChanged(ClipEntry changed)
     {
-        if (ReferenceEquals(changed, _entry))
+        if (ReferenceEquals(changed, _entry) || ReferenceEquals(changed, _candidate))
             StopForSource("Type-out stopped because the entry was deleted, expired, or cleared.");
     }
 
     public void EntryChanged(ClipEntry changed, EntryInvalidationReason reason)
     {
-        if (ReferenceEquals(changed, _entry))
+        if (ReferenceEquals(changed, _entry) || ReferenceEquals(changed, _candidate))
             StopForSource(StopMessage(reason));
     }
 
@@ -164,7 +194,7 @@ internal sealed class TypeOutSession : IDisposable
 
     private void StopForSource(string message)
     {
-        if (_running is not null) _stopReason = message;
+        if (IsActive) _stopReason = message;
         Cancel(message);
     }
 
@@ -185,25 +215,11 @@ internal sealed class TypeOutSession : IDisposable
     public void Cancel(string? reason = null)
     {
         if (_disposed) return;
-        if (_running is null) ClearArmedEntry();
+        _candidate = null;
+        if (!IsActive) ResetEntry();
         _cancel?.Cancel();
-        _deactivateHotkeys();
+        if (_running is null) _deactivateHotkeys();
         if (reason is not null) _report(reason);
-    }
-
-    public bool Disarm()
-    {
-        if (_running is not null) return false;
-        var wasArmed = _armedPayload is not null;
-        if (wasArmed) { Cancel(null); _report("Type-out idle. Select another entry to arm it."); }
-        return wasArmed;
-    }
-
-    private void ClearArmedEntry()
-    {
-        if (_armedPayload is not null) Array.Clear(_armedPayload, 0, _armedPayload.Length);
-        _armedPayload = null;
-        if (_running is null) ResetEntry();
     }
 
     private void ResetEntry()
@@ -215,7 +231,7 @@ internal sealed class TypeOutSession : IDisposable
         _deactivateHotkeys();
     }
 
-    private void Reject() => _report("Type-out could not be armed: the entry is not eligible.");
+    private void Reject() => _report("Type-out: selected entry is not eligible.");
 
     public void Dispose()
     {
@@ -225,9 +241,11 @@ internal sealed class TypeOutSession : IDisposable
         if (running is not null && !Task.Run(() => running).Wait(TimeSpan.FromMilliseconds(500)))
             _report("Type-out is waiting for Windows to stop accepting input.");
         _running = null;
+        _deactivateHotkeys();
+        _cancel?.Dispose();
+        _cancel = null;
         _disposed = true;
-        if (_armedPayload is not null) Array.Clear(_armedPayload, 0, _armedPayload.Length);
-        _armedPayload = null;
+        _candidate = null;
         _entry = null;
     }
 }
