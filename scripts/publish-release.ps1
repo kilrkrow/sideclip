@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-  Publish Sideclip as a self-contained win-x64 folder, zip it, and print SHA256.
+  Publish Sideclip as a framework-dependent win-x64 folder, zip it, and print SHA256.
 
 .DESCRIPTION
-  Run on Windows with the .NET 8 SDK; validate the native WPF build there.
+  Run on Windows with the .NET 8 SDK; validate the native WPF build there. The ZIP requires the .NET 8 Desktop Runtime (x64) on the target machine.
 
   Output: artifacts\Sideclip-win-x64-v<Version>.zip
 
@@ -47,7 +47,7 @@ $publishDir = Join-Path $artifactRoot 'publish\win-x64'
 $zipName = "Sideclip-win-x64-v$Version.zip"
 $zipPath = Join-Path $artifactRoot $zipName
 
-Write-Host "Publishing Sideclip $Version (self-contained win-x64, single-folder)..."
+Write-Host "Publishing Sideclip $Version (framework-dependent win-x64, no pdb)..."
 if (Test-Path $publishDir) {
   Remove-Item $publishDir -Recurse -Force
 }
@@ -56,7 +56,10 @@ New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 dotnet publish $project `
   -c Release `
   -r win-x64 `
-  --self-contained true `
+  --self-contained false `
+  -p:PublishSingleFile=false `
+  -p:DebugType=None `
+  -p:DebugSymbols=false `
   -o $publishDir
 
 if ($LASTEXITCODE -ne 0) {
@@ -66,6 +69,16 @@ if ($LASTEXITCODE -ne 0) {
 $exe = Join-Path $publishDir 'Sideclip.exe'
 if (-not (Test-Path $exe)) {
   throw "Sideclip.exe missing after publish: $exe"
+}
+
+Get-ChildItem -LiteralPath $publishDir -Filter '*.pdb' -Recurse -ErrorAction SilentlyContinue |
+  Remove-Item -Force
+
+$banned = @('coreclr.dll','System.Private.CoreLib.dll','PresentationFramework.dll','hostfxr.dll')
+$hit = Get-ChildItem -LiteralPath $publishDir -File -ErrorAction SilentlyContinue |
+  Where-Object { $banned -contains $_.Name }
+if ($hit) {
+  throw ("Publish looks self-contained; unexpected runtime DLLs: " + ($hit.Name -join ', '))
 }
 
 # Bundle canonical skills directly; repository/user synchronization is a separate opt-in task.

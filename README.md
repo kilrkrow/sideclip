@@ -11,6 +11,14 @@ Windows tray clipboard that sits beside Win+V. It never steals Win+V.
 
 ## Install
 
+### Prerequisite
+
+Sideclip targets `net8.0-windows` and ships as a framework-dependent win-x64 build. Install the **.NET 8 Desktop Runtime (x64)** before running `Sideclip.exe`:
+
+https://dotnet.microsoft.com/download/dotnet/8.0
+
+If the runtime is missing, the standard .NET host prompt asks you to download it.
+
 ### GitHub Releases
 
 Download `Sideclip-win-x64-v0.3.0.zip` from [Releases](https://github.com/kilrkrow/sideclip/releases/latest), extract it, and run `Sideclip.exe`.
@@ -32,7 +40,7 @@ Chocolatey installs the tray, shims `sideclip` onto PATH, and copies the skill t
 ```powershell
 git clone https://github.com/kilrkrow/sideclip.git
 cd sideclip
-dotnet publish -c Release -r win-x64 --self-contained true
+dotnet publish -c Release -r win-x64 --self-contained false -p:DebugType=None -p:DebugSymbols=false
 ```
 
 Output: `bin\Release\net8.0-windows\win-x64\publish\Sideclip.exe`
@@ -120,7 +128,7 @@ After GitHub release `v0.3.0`, submit a remote catalog entry to [xai-org/plugin-
 
 ## Build and release zip
 
-On Windows, `.\scripts\publish-release.ps1` publishes to `artifacts\publish\win-x64`, zips `artifacts\Sideclip-win-x64-v0.3.0.zip` (includes `skills/sideclip`), and prints SHA256.
+On Windows, `.\scripts\publish-release.ps1` publishes a framework-dependent win-x64 folder (no bundled runtime, no `.pdb`) to `artifacts\publish\win-x64`, zips `artifacts\Sideclip-win-x64-v0.3.0.zip` (includes `skills/sideclip`), and prints SHA256. Requires the .NET 8 Desktop Runtime (x64) on the machine that runs the app.
 
 ## Version
 

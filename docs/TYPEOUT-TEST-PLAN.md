@@ -36,7 +36,7 @@ Unit coverage (fake sinks / focus probes; not physical input) is expected to inc
 
 ## Manual / published-exe acceptance matrix
 
-Use a published self-contained win-x64 build, isolated data dir, synthetic destinations only. No live secrets in screenshots or logs. Record expected vs actual hex or exact UTF-16 where useful.
+Use a published framework-dependent win-x64 build (.NET 8 Desktop Runtime x64 required), isolated data dir, synthetic destinations only. No live secrets in screenshots or logs. Record expected vs actual hex or exact UTF-16 where useful.
 
 ### A. Clipboard copy (text and image)
 
@@ -122,7 +122,7 @@ Fill per integrate / final critic. Do not promote unit or source rows to runtime
 
 ## Packaging recommendations (do not run final zip while parallel builders active)
 
-`scripts\publish-release.ps1 -Version 0.3.0` remains the packaging entrypoint: self-contained win-x64 publish, `artifacts\Sideclip-win-x64-v0.3.0.zip`, print SHA256, skill copy into zip. Recommendations only until integrate + final UI critic:
+`scripts\publish-release.ps1 -Version 0.3.0` remains the packaging entrypoint: framework-dependent win-x64 publish (no runtime DLLs, no pdb), `artifacts\Sideclip-win-x64-v0.3.0.zip`, print SHA256, skill copy into zip. Recommendations only until integrate + final UI critic:
 
 1. Run publish only after pieces a-d are integrated and the vertical slice re-pass is green.
 2. Keep Version 0.3.0 aligned across csproj / zip name / About / Settings title / chocolatey when maintainers bump later -- do not invent a new version policy here.

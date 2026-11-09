@@ -22,7 +22,7 @@ Sideclip is a Windows tray clipboard that sits beside Win+V. It never steals Win
 - CLI: sideclip --shots, --newest, --picker, --pick.
 - Agent skill (Grok / Codex): copies to ~/.agents/skills/sideclip so /sideclip opens the picker.
 
-This package downloads the official GitHub Release ZIP, installs Sideclip.exe, adds a Start Menu shortcut, shims `sideclip` onto PATH, and installs the agent skill.
+This package downloads the official GitHub Release ZIP, installs Sideclip.exe, adds a Start Menu shortcut, shims `sideclip` onto PATH, and installs the agent skill. Requires the .NET 8 Desktop Runtime (x64); Chocolatey dependency: dotnet-8.0-desktopruntime.
 
 ## Project
 
@@ -31,6 +31,9 @@ https://github.com/kilrkrow/sideclip
     <tags>clipboard tray windows grok codex skill</tags>
     <releaseNotes>https://github.com/kilrkrow/sideclip/releases/tag/v0.3.0</releaseNotes>
     <copyright>Copyright (c) 2026 kilrkrow</copyright>
+    <dependencies>
+      <dependency id="dotnet-8.0-desktopruntime" version="8.0.0" />
+    </dependencies>
   </metadata>
   <files>
     <file src="tools\**" target="tools" />

@@ -1,6 +1,6 @@
 # Chocolatey package: `sideclip`
 
-Installs Sideclip from the official GitHub Release ZIP, shims `sideclip` onto PATH, and copies the skill to `%USERPROFILE%\.agents\skills\sideclip` (Grok, Codex) and `%USERPROFILE%\.claude\skills\sideclip` (Claude Code).
+Installs Sideclip from the official GitHub Release ZIP (framework-dependent; depends on Chocolatey package `dotnet-8.0-desktopruntime` for the .NET 8 Desktop Runtime x64), shims `sideclip` onto PATH, and copies the skill to `%USERPROFILE%\.agents\skills\sideclip` (Grok, Codex) and `%USERPROFILE%\.claude\skills\sideclip` (Claude Code).
 
 Current package metadata version is **0.3.0** (`sideclip/sideclip.nuspec`). After `.\scripts\publish-release.ps1 -Version 0.3.0`, fill the ZIP SHA256 into `sideclip/tools/chocolateyinstall.ps1` and `sideclip/tools/VERIFICATION.txt` to match `artifacts\Sideclip-win-x64-v0.3.0.zip`. Do not invent checksums; use the script output.
 
