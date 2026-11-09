@@ -93,15 +93,96 @@ public sealed class SettingsIntegrationTests
             var original = new AppSettings { TypeOutEnabled = false }; AppSettings? applied = null;
             using var form = new SettingsForm(original, next => { applied = next.Copy(); return null; });
             Assert.Contains("0.3.0", form.Text); Assert.NotNull(form.Icon);
-            var enabled = Control<CheckBox>(form, "TypeOutEnabled"); var delay = Control<NumericUpDown>(form, "TypeOutDelayMs");
-            Assert.False(enabled.Checked); Assert.False(delay.Enabled); Assert.Equal(0, delay.Minimum); Assert.Equal(250, delay.Maximum);
-            enabled.Checked = true; Assert.True(delay.Enabled); delay.Value = 80;
-            Control<TextBox>(form, "TypeOutGoHotkey").Text = "Ctrl+Alt+Shift+F9";
+            var enabled = Control<CheckBox>(form, "TypeOutEnabled");
+            var delay = Control<NumericUpDown>(form, "TypeOutDelayMs");
+            var typeOut = Control<TextBox>(form, "TypeOutGoHotkey");
+            Assert.False(enabled.Checked);
+            Assert.False(form.TypeOutDependentsEnabled);
+            Assert.False(delay.Enabled);
+            Assert.False(typeOut.Enabled);
+            Assert.All(form.TypeOutDependentControls, c => Assert.False(c.Enabled));
+            Assert.Equal(0, delay.Minimum); Assert.Equal(250, delay.Maximum);
+            enabled.Checked = true;
+            Assert.True(form.TypeOutDependentsEnabled);
+            Assert.True(delay.Enabled);
+            Assert.True(typeOut.Enabled);
+            delay.Value = 80;
+            typeOut.Text = "Ctrl+Alt+Shift+F9";
             Assert.True(form.ApplyChanges()); Assert.True(applied!.TypeOutEnabled); Assert.Equal(80, applied.TypeOutDelayMs);
             Assert.Equal("Ctrl+Shift+Alt+F9", applied.TypeOutGoHotkey);
-            enabled.Checked = false; Assert.False(delay.Enabled);
+            enabled.Checked = false;
+            Assert.False(delay.Enabled);
+            Assert.False(typeOut.Enabled);
             Assert.False(original.TypeOutEnabled); Assert.Equal(12, original.TypeOutDelayMs);
         });
+    }
+
+    [Fact]
+    public void Type_out_toggle_gates_dependents_without_clearing_hotkey_or_delay_values()
+    {
+        Sta(() =>
+        {
+            var original = new AppSettings
+            {
+                TypeOutEnabled = true,
+                TypeOutGoHotkey = "Ctrl+Alt+Shift+F9",
+                TypeOutDelayMs = 80
+            };
+            using var form = new SettingsForm(original, _ => null);
+            var enabled = Control<CheckBox>(form, "TypeOutEnabled");
+            var delay = Control<NumericUpDown>(form, "TypeOutDelayMs");
+            var typeOut = Control<TextBox>(form, "TypeOutGoHotkey");
+            var typeOutLabel = Control<Label>(form, "TypeOutGoHotkeyLabel");
+            var delayLabel = Control<Label>(form, "TypeOutDelayLabel");
+
+            Assert.True(enabled.Checked);
+            Assert.True(typeOut.Enabled);
+            Assert.True(delay.Enabled);
+            Assert.Equal("Ctrl+Alt+Shift+F9", typeOut.Text);
+            Assert.Equal(80, delay.Value);
+            Assert.True(typeOut.Left > enabled.Left); // nested under toggle
+            Assert.True(typeOutLabel.Left > enabled.Left);
+            Assert.True(delayLabel.Left > enabled.Left);
+
+            enabled.Checked = false;
+            Assert.False(form.TypeOutDependentsEnabled);
+            Assert.All(form.TypeOutDependentControls, c => Assert.False(c.Enabled));
+            Assert.Equal("Ctrl+Alt+Shift+F9", typeOut.Text);
+            Assert.Equal(80, delay.Value);
+            Assert.Equal(SettingsForm.DisabledFore.ToArgb(), typeOut.ForeColor.ToArgb());
+            Assert.Equal(SettingsForm.DisabledBack.ToArgb(), typeOut.BackColor.ToArgb());
+            Assert.Equal(SettingsForm.DisabledFore.ToArgb(), delay.ForeColor.ToArgb());
+            Assert.Equal(SettingsForm.DisabledBack.ToArgb(), delay.BackColor.ToArgb());
+
+            enabled.Checked = true;
+            Assert.True(form.TypeOutDependentsEnabled);
+            Assert.All(form.TypeOutDependentControls, c => Assert.True(c.Enabled));
+            Assert.Equal("Ctrl+Alt+Shift+F9", typeOut.Text);
+            Assert.Equal(80, delay.Value);
+            Assert.Equal("Ctrl+Alt+Shift+F9", original.TypeOutGoHotkey);
+            Assert.Equal(80, original.TypeOutDelayMs);
+        });
+    }
+
+    [Fact]
+    public void Type_out_disabled_palette_meets_wcag_contrast()
+    {
+        static double Contrast(int a, int b)
+        {
+            static double L(int rgb)
+            {
+                double C(int v) { var c = v / 255.0; return c <= 0.03928 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4); }
+                return 0.2126 * C((rgb >> 16) & 0xFF) + 0.7152 * C((rgb >> 8) & 0xFF) + 0.0722 * C(rgb & 0xFF);
+            }
+            var (x, y) = (L(a), L(b));
+            return (Math.Max(x, y) + 0.05) / (Math.Min(x, y) + 0.05);
+        }
+
+        var fore = SettingsForm.DisabledFore.ToArgb() & 0xFFFFFF;
+        var back = SettingsForm.DisabledBack.ToArgb() & 0xFFFFFF;
+        Assert.Equal(0x9AA0AC, fore);
+        Assert.Equal(0x262A35, back);
+        Assert.True(Contrast(fore, back) >= 4.5, $"disabled contrast was {Contrast(fore, back):0.00}");
     }
 
     [Fact]
