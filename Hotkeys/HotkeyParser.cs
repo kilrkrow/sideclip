@@ -1,4 +1,4 @@
-﻿using System.Windows.Forms;
+using System.Windows.Forms;
 using Sideclip.Native;
 
 namespace Sideclip.Hotkeys;
@@ -35,6 +35,30 @@ internal static class HotkeyParser
 
         vk = (uint)key;
         return true;
+    }
+
+    public static bool IsForbidden(string? hotkey) =>
+        Normalize(hotkey) is "Win+V" or "Ctrl+Win+V" or "Ctrl+Win+P";
+
+    public static string? NormalizedOrError(string? hotkey)
+    {
+        if (string.IsNullOrWhiteSpace(hotkey)) return null;
+        if (IsForbidden(hotkey)) return "Reserved Windows hotkeys cannot be assigned.";
+        return hotkey;
+    }
+
+    public static string Normalize(string? hotkey)
+    {
+        if (!TryParse(hotkey, out var mods, out var vk)) return string.Empty;
+        var parts = new List<string>();
+        if ((mods & NativeMethods.ModControl) != 0) parts.Add("Ctrl");
+        if ((mods & NativeMethods.ModShift) != 0) parts.Add("Shift");
+        if ((mods & NativeMethods.ModAlt) != 0) parts.Add("Alt");
+        if ((mods & NativeMethods.ModWin) != 0) parts.Add("Win");
+        var key = ((System.Windows.Forms.Keys)vk).ToString();
+        if (key.Length == 2 && key[0] == 'D' && char.IsDigit(key[1])) key = key[1].ToString();
+        parts.Add(key);
+        return string.Join("+", parts);
     }
 
     public static string FromKeyEvent(KeyEventArgs e, bool winDown)

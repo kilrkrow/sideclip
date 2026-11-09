@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <DefaultItemExcludes>$(DefaultItemExcludes);Sideclip.Tests\**</DefaultItemExcludes>
@@ -12,16 +12,29 @@
     <AssemblyName>Sideclip</AssemblyName>
     <ApplicationTitle>Sideclip</ApplicationTitle>
     <ApplicationIcon>Assets/sideclip.ico</ApplicationIcon>
-    <Version>0.2.0</Version>
-    <AssemblyVersion>0.2.0.0</AssemblyVersion>
-    <FileVersion>0.2.0.0</FileVersion>
-    <InformationalVersion>0.2.0</InformationalVersion>
+    <Version>0.3.0</Version>
+    <AssemblyVersion>0.3.0.0</AssemblyVersion>
+    <FileVersion>0.3.0.0</FileVersion>
+    <InformationalVersion>0.3.0</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Authors>kilrkrow</Authors>
     <Product>Sideclip</Product>
     <Copyright>Copyright (c) 2026 kilrkrow</Copyright>
     <Description>Windows tray clipboard that sits beside Win+V.</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sideclip.Tests" />
+  </ItemGroup>
+
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>None</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+  </PropertyGroup>
 </Project>
-
-

@@ -2,7 +2,9 @@ using System.IO;
 using System.Text;
 using System.Windows.Threading;
 using Sideclip.History;
+using Xunit;
 
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
 namespace Sideclip.Tests;
 
 /// <summary>

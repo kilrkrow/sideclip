@@ -1,28 +1,29 @@
 <#
 .SYNOPSIS
-  Publish Sideclip as a self-contained win-x64 folder, zip it, and print SHA256.
+  Publish Sideclip as a framework-dependent win-x64 folder, zip it, and print SHA256.
 
 .DESCRIPTION
-  Intended to run on Windows (e.g. VENGEANCE). This Linux/cloud VM cannot produce
-  WPF win-x64 binaries.
+  Run on Windows with the .NET 8 SDK; validate the native WPF build there. The ZIP requires the .NET 8 Desktop Runtime (x64) on the target machine.
 
   Output: artifacts\Sideclip-win-x64-v<Version>.zip
 
-  Also copies .agents/skills/sideclip into the zip as skills/sideclip.
+  Also copies the canonical .agents/skills/sideclip directly into the zip as
+  skills/sideclip. Packaging does not synchronize or replace checkout/user skills.
 
   After this script, create the GitHub Release (if needed) and put the printed
   SHA256 into pack/chocolatey/sideclip/tools/ (see pack/chocolatey/README.md).
 
 .PARAMETER Version
-  Semver without a leading v. Defaults to 0.2.0 (must match Sideclip.csproj / nuspec).
+  Semver without a leading v. Defaults to 0.3.0 (must match Sideclip.csproj / nuspec).
 
 .EXAMPLE
   .\scripts\publish-release.ps1
-  .\scripts\publish-release.ps1 -Version 0.2.0
+  .\scripts\publish-release.ps1 -Version 0.3.0 -ArtifactRoot C:\scratch\sideclip-publish
 #>
 [CmdletBinding()]
 param(
-  [string]$Version = '0.2.0'
+  [string]$Version = '0.3.0',
+  [string]$ArtifactRoot = (Join-Path $PSScriptRoot '..\artifacts')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,12 +40,14 @@ if (-not (Test-Path $project)) {
   throw "Sideclip.csproj not found at $project"
 }
 
-$artifactRoot = Join-Path $repoRoot 'artifacts'
+$artifactRoot = [IO.Path]::GetFullPath($ArtifactRoot)
+$projectText = Get-Content -LiteralPath $project -Raw
+if (!$projectText.Contains("<Version>$Version</Version>")) { throw "Version must match Sideclip.csproj." }
 $publishDir = Join-Path $artifactRoot 'publish\win-x64'
 $zipName = "Sideclip-win-x64-v$Version.zip"
 $zipPath = Join-Path $artifactRoot $zipName
 
-Write-Host "Publishing Sideclip $Version (self-contained win-x64, single-folder)..."
+Write-Host "Publishing Sideclip $Version (framework-dependent win-x64, no pdb)..."
 if (Test-Path $publishDir) {
   Remove-Item $publishDir -Recurse -Force
 }
@@ -53,7 +56,10 @@ New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 dotnet publish $project `
   -c Release `
   -r win-x64 `
-  --self-contained true `
+  --self-contained false `
+  -p:PublishSingleFile=false `
+  -p:DebugType=None `
+  -p:DebugSymbols=false `
   -o $publishDir
 
 if ($LASTEXITCODE -ne 0) {
@@ -65,7 +71,17 @@ if (-not (Test-Path $exe)) {
   throw "Sideclip.exe missing after publish: $exe"
 }
 
-& (Join-Path $repoRoot 'scripts\sync-agent-skill.ps1')
+Get-ChildItem -LiteralPath $publishDir -Filter '*.pdb' -Recurse -ErrorAction SilentlyContinue |
+  Remove-Item -Force
+
+$banned = @('coreclr.dll','System.Private.CoreLib.dll','PresentationFramework.dll','hostfxr.dll')
+$hit = Get-ChildItem -LiteralPath $publishDir -File -ErrorAction SilentlyContinue |
+  Where-Object { $banned -contains $_.Name }
+if ($hit) {
+  throw ("Publish looks self-contained; unexpected runtime DLLs: " + ($hit.Name -join ', '))
+}
+
+# Bundle canonical skills directly; repository/user synchronization is a separate opt-in task.
 $skillSrc = Join-Path $repoRoot '.agents\skills\sideclip'
 $skillDest = Join-Path $publishDir 'skills\sideclip'
 if (Test-Path -LiteralPath $skillDest) {
