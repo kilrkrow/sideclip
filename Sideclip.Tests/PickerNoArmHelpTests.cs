@@ -404,4 +404,64 @@ public sealed class PickerNoArmHelpTests
             picker.Close();
         });
     }
+    [Fact]
+    public void Ordinary_leave_closes_without_invalidating_identity_and_completes_CLI_cancel()
+    {
+        Sta(() =>
+        {
+            var entry = new ClipEntry("deliberate synthetic text", false, "test");
+            var picker = new PickerWindow(new[] { entry }, IntPtr.Zero,
+                (_, _) => Assert.Fail("Leaving must not copy or send"), true, "Ctrl+Alt+F9");
+            var choices = new List<ClipEntry>();
+            var invalidations = 0;
+            var cliCancels = 0;
+            picker.CandidateSelected += choices.Add;
+            picker.CandidateInvalidated += () => invalidations++;
+            picker.Cancelled += () => cliCancels++;
+            Call(picker, "MoveSel", 0);
+            picker.LeavePicker();
+            Assert.Same(entry, Assert.Single(choices));
+            Assert.Equal(0, invalidations);
+            Assert.Equal(1, cliCancels);
+            var source = ReadPickerCs();
+            Assert.Contains("protected override void OnDeactivated(EventArgs e)", source);
+            Assert.Contains("base.OnDeactivated(e);", source);
+            Assert.Contains("if (IsVisible)\r\n            LeavePicker();", source);
+        });
+    }
+
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(true, "")]
+    [InlineData(true, null)]
+    [InlineData(true, "Ctrl+Shift+Alt+F9")]
+    public void Footer_help_is_bottom_right_wrapped_and_does_not_overlap_Copy(bool enabled, string? shortcut)
+    {
+        Sta(() =>
+        {
+            var entry = new ClipEntry("field\tvalue", false, "test");
+            var picker = new PickerWindow(new[] { entry }, IntPtr.Zero, (_, _) => { }, enabled, shortcut);
+            picker.UpdateTypeOutHelp(enabled, shortcut);
+            var card = (Border)picker.FindName("Card")!;
+            card.Measure(new System.Windows.Size(875, 650));
+            card.Arrange(new System.Windows.Rect(0, 0, 875, 650));
+            card.UpdateLayout();
+            var footer = (TextBlock)picker.FindName("FooterHelp")!;
+            var copy = (Button)picker.FindName("CopyButton")!;
+            var list = (ListBox)picker.FindName("List")!;
+            var footerPoint = footer.TranslatePoint(new System.Windows.Point(), card);
+            var copyPoint = copy.TranslatePoint(new System.Windows.Point(), card);
+            Assert.Equal(1, Grid.GetColumn(footer));
+            Assert.Equal(0, Grid.GetColumn((System.Windows.UIElement)copy.Parent));
+            Assert.Equal(System.Windows.TextAlignment.Right, footer.TextAlignment);
+            Assert.Equal(System.Windows.HorizontalAlignment.Right, footer.HorizontalAlignment);
+            Assert.Equal(System.Windows.TextWrapping.Wrap, footer.TextWrapping);
+            Assert.True(footerPoint.X > copyPoint.X + copy.ActualWidth);
+            Assert.InRange(footerPoint.X + footer.ActualWidth, 850, 857);
+            Assert.InRange(Math.Abs(footerPoint.Y + footer.ActualHeight - copyPoint.Y - copy.ActualHeight), 0, 1);
+            Assert.InRange(footer.ActualHeight, 50, 230);
+            Assert.True(list.ActualHeight > 250, "Help must leave usable history rows");
+            picker.Close();
+        });
+    }
 }

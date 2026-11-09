@@ -64,12 +64,16 @@
             <DockPanel>
                 <Grid DockPanel.Dock="Bottom" Margin="18,0,18,16">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="FooterHelp"
-                               Grid.Column="0"
-                               Margin="0,2,16,0"
+                               Grid.Column="1"
+                               Margin="16,2,0,0"
+                               MaxWidth="740"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Bottom"
+                               TextAlignment="Right"
                                TextWrapping="Wrap"
                                AutomationProperties.Name="Sideclip picker status and keyboard help"
                                AutomationProperties.LiveSetting="Polite">
@@ -83,7 +87,7 @@
                         <LineBreak />
                         <Run x:Name="TypeOutHelp" Foreground="#ABAFBC" />
                     </TextBlock>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Bottom">
                         <Button x:Name="CopyButton" Content="Copy" ToolTip="Copy without pasting"
                                 Style="{StaticResource PickerButton}"
                                 Click="OnCopyClick" />

@@ -400,6 +400,17 @@ public partial class PickerWindow : Window
         _commit(sel, false);
     }
 
+    protected override void OnDeactivated(EventArgs e)
+    {
+        base.OnDeactivated(e);
+        // Ordinary Alt+Tab must remove the maximized topmost scrim so the
+        // external caret can be positioned. Leaving is not explicit cancel.
+        if (IsVisible)
+            LeavePicker();
+    }
+
+    internal void LeavePicker() => Close();
+
     protected override void OnClosed(EventArgs e)
     {
         // Complete a CLI pick on any uncommitted close (scrim/window close/Esc).
