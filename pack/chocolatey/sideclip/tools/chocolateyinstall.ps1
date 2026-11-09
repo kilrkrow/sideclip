@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $toolsDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$version = '0.2.0'
+$version = '0.3.0'
 $packageName = 'sideclip'
 $zipName = "Sideclip-win-x64-v$version.zip"
 $baseUrl = "https://github.com/kilrkrow/sideclip/releases/download/v$version"
@@ -40,14 +40,16 @@ if (-not (Test-Path -LiteralPath (Join-Path $skillSrc 'SKILL.md'))) {
   $skillSrc = Join-Path $appOut 'skills\sideclip'
 }
 if (Test-Path -LiteralPath (Join-Path $skillSrc 'SKILL.md')) {
-  $skillDest = Join-Path $env:USERPROFILE '.agents\skills\sideclip'
-  $skillParent = Split-Path -Parent $skillDest
-  New-Item -ItemType Directory -Path $skillParent -Force | Out-Null
-  if (Test-Path -LiteralPath $skillDest) {
-    Remove-Item -LiteralPath $skillDest -Recurse -Force
+  foreach ($rel in @('.agents\skills\sideclip', '.claude\skills\sideclip')) {
+    $skillDest = Join-Path $env:USERPROFILE $rel
+    $skillParent = Split-Path -Parent $skillDest
+    New-Item -ItemType Directory -Path $skillParent -Force | Out-Null
+    if (Test-Path -LiteralPath $skillDest) {
+      Remove-Item -LiteralPath $skillDest -Recurse -Force
+    }
+    Copy-Item -LiteralPath $skillSrc -Destination $skillDest -Recurse
+    Write-Host "Installed Sideclip agent skill to $skillDest"
   }
-  Copy-Item -LiteralPath $skillSrc -Destination $skillDest -Recurse
-  Write-Host "Installed Sideclip agent skill to $skillDest"
 }
 
 Remove-Item $zipPath -Force -ErrorAction SilentlyContinue

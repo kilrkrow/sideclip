@@ -1,128 +1,1 @@
-# Sideclip
-
-Windows tray clipboard that sits beside Win+V. It never steals Win+V.
-
-- Watches the clipboard. Non-secrets persist locally. Secrets stay in memory and expire (always-secret for 1Password.exe / 1Password-BrowserSupport owner or foreground; browsers use the heuristic).
-- Picker: `Ctrl+Shift+Win+V` (type to filter, Enter paste, Shift+Enter copy).
-- Screenshot path: `Ctrl+Shift+Win+P` types the newest file in Pictures\Screenshots.
-- CLI (tray can be running): `sideclip --shots [n]`, `sideclip --newest`, `sideclip --picker`, `sideclip --pick`.
-- Agent skill (Grok / Codex): opens the picker (`--pick`) and inserts the chosen clip. Screenshot paths fall back to a dated text list of the last 3 files (no image ingest).
-- Release is tray-only. Hotkeys and the Screenshots options are set from the tray: **Settings...**.
-- Screenshots (optional, both off by default): copy every new screenshot to a folder of your choice, and add it to today's Obsidian daily note. See [Screenshots](#screenshots).
-
-## Screenshots
-
-Tray > **Settings...** > **Screenshots**. Aimed at parity with ShareX's "After capture: copy file to folder", without needing ShareX.
-
-**Also copy new screenshots to a folder** (off by default)
-
-- Watches the Windows Screenshots folder (the `Screenshots` known folder, normally `Pictures\Screenshots`, where Win+PrtScn and Snipping Tool save) and copies every new image (png, jpg, jpeg, gif, bmp, webp) to the folder you pick.
-- The original is never moved, renamed or deleted. Sideclip waits until the capture tool has finished writing the file.
-- Name clashes in the target get ` (1)`, ` (2)`, ... and nothing is ever overwritten. Files that were already there when the option was turned on are not copied.
-- The target must exist and cannot be the Screenshots folder itself.
-
-**Add to Obsidian daily note** (off by default, indented under the copy option)
-
-- Only available while the copy option is on with a valid folder. Turning the copy option off greys it out but keeps its values.
-- Pick a vault from the list (read from Obsidian's own `%APPDATA%\obsidian\obsidian.json`) or **Browse...** to any vault folder. No Obsidian plugin is needed; Obsidian does not have to be running.
-- Uses the vault's core Daily notes settings in `.obsidian/daily-notes.json`: `folder`, `format` (Moment.js tokens, `/` makes subfolders, e.g. `YYYY/MMMM/YYYY-MM-DD`) and `template`. Without that file: `YYYY-MM-DD.md` at the vault root, like Obsidian.
-- If today's note does not exist yet it is created, from the template when one is set (`{{title}}`, `{{date}}`, `{{time}}`, `{{date:FORMAT}}`, `{{time:FORMAT}}` are filled in).
-- Append only: one line per screenshot, e.g. `- 14:05:32 ![[Attachments/Shots/Screenshot 2026-10-27 140532.png]]`. Existing text is never rewritten; the note's encoding and line endings are kept.
-- **Heading** (optional, one line of Markdown, e.g. `## Sideclip Clips`): clips go under that heading instead of at the end of the note.
-  - Must be an ATX heading: 1-6 `#`, a space, then text. Invalid input shows an error and is not saved; the last valid value is kept. Blank = end of note.
-  - The heading must match a whole line (trailing spaces ignored). Matches inside YAML frontmatter or fenced code blocks don't count, and the first match wins.
-  - Each clip (and its OCR callout) goes at the end of the heading's section. The section ends at the next heading of the same or a higher level, or at the end of the note; lower-level subheadings stay inside it. The clip goes after the section's last non-blank line, so blank lines before the next heading stay where they are.
-  - Heading not in today's note (including a note just created from the template): a blank line, the heading and the clip are added at the end. Later clips that day go under it. The heading itself is never edited, moved or duplicated, and the rest of the note stays byte for byte the same.
-- Copy folder inside the vault: the screenshot is embedded with `![[vault-relative path]]`. Outside the vault: a normal Markdown link to the file (`[name](file:///D:/Shots/name.png)`), and the settings window says so.
-
-**Add OCR text under each screenshot** (off by default, indented under the daily note option)
-
-- Runs the built-in Windows OCR (`Windows.Media.Ocr`, your Windows display languages) on each copy and puts the text in a collapsed callout under the embed:
-
-  ```markdown
-  - 14:05:32 ![[Attachments/Shots/Screenshot 2026-10-27 140532.png]]
-  > [!note]- OCR text
-  > recognised text
-  ```
-
-- Background only, with a 15 second limit per image. If OCR fails, times out or finds nothing, the embed line is still written. Copying never waits for it.
-- Greyed out if Windows has no OCR language installed.
-
-Problems (folder gone, vault moved, note locked) show one tray notification per kind, not one per screenshot. Nothing here can stop the clipboard watcher.
-
-## Build
-
-Self-contained `win-x64` folder (release / Chocolatey zip):
-
-```powershell
-dotnet publish -c Release -r win-x64 --self-contained true
-```
-
-Output: `bin\Release\net8.0-windows\win-x64\publish\Sideclip.exe`
-
-On Windows, `.\scripts\publish-release.ps1` publishes to `artifacts\publish\win-x64`, zips it to `artifacts\Sideclip-win-x64-v0.2.0.zip` (includes `skills/sideclip`), and prints SHA256.
-
-Defaults never bind `Win+V`, `Ctrl+Win+V`, or `Ctrl+Win+P`.
-
-Unit tests (screenshot copier, Moment format, Obsidian config, daily-note append):
-
-```powershell
-dotnet test tests\Sideclip.Tests
-```
-
-Test hooks (environment variables, all optional):
-
-- `SIDECLIP_DATA_DIR`: use this folder for settings and history instead of `%LocalAppData%\Sideclip`. Runs as a separate instance and never writes the Start with Windows entry.
-- `SIDECLIP_SCREENSHOTS_DIR`: watch this folder instead of the Screenshots known folder.
-- `SIDECLIP_OBSIDIAN_JSON`: read this vault registry instead of `%APPDATA%\obsidian\obsidian.json`.
-- `SIDECLIP_OPEN_SETTINGS=1`: open Settings at startup.
-
-## Agent skill (Grok and Codex)
-
-`/sideclip` opens the Sideclip picker and inserts the chosen clip into the chat. If the tray is not running, you get a dated text list of the last 3 files in `Pictures\Screenshots`. The skill does not ingest screenshot pixels.
-
-Canonical skill: `.agents/skills/sideclip`. `.\scripts\sync-agent-skill.ps1` copies it to `plugin/skills/sideclip` and the Chocolatey nupkg. Do not edit the copies.
-
-### Install
-
-Chocolatey (`choco install sideclip`) installs the tray, shims `sideclip` onto PATH, and copies the skill to `%USERPROFILE%\.agents\skills\sideclip` (Grok and Codex both scan that folder).
-
-From this repo, user-scope only:
-
-```powershell
-.\scripts\install-agent-skill.ps1
-```
-
-Grok plugin (this repo is the marketplace):
-
-```powershell
-grok plugin marketplace add kilrkrow/sideclip
-grok plugin install sideclip --trust
-```
-
-Local checkout:
-
-```powershell
-grok plugin marketplace add D:\_dev\Sideclip
-grok plugin install sideclip --trust
-```
-
-Direct plugin path: `grok plugin install kilrkrow/sideclip#plugin --trust`
-
-Codex: same `plugin\` tree (`plugin/.codex-plugin/plugin.json`). After the user-scope copy, `$sideclip` or `/skills`.
-
-`--shots` / `--newest` work without the tray. `--picker` / `--pick` need this build of Sideclip running.
-
-After GitHub release `v0.2.0`, submit a remote catalog entry to [xai-org/plugin-marketplace](https://github.com/xai-org/plugin-marketplace) pointing at `https://github.com/kilrkrow/sideclip.git` (pinned SHA), so Grok `/marketplace` can list it.
-
-## Version
-
-`0.2.0` in `Sideclip.csproj` (`Version` / `AssemblyVersion`).
-
-## Chocolatey
-
-See [pack/chocolatey/README.md](pack/chocolatey/README.md). Package id `sideclip` downloads `Sideclip-win-x64-v0.2.0.zip` from GitHub Releases and installs the agent skill.
-
-## License
-
-[MIT](LICENSE)
+# Sideclip\n\nWindows tray clipboard that sits beside Win+V. It never steals Win+V.\n\n- Watches the clipboard. Non-secrets persist locally. Secrets stay in memory, expire, and may appear in the picker until wiped (always-secret for 1Password.exe / 1Password-BrowserSupport owner or foreground; browsers use the heuristic).\n- Picker: `Ctrl+Shift+Win+V` (type to filter; Enter, Shift+Enter, double-click, and Copy put the selection on the ordinary Windows clipboard only -- no simulated Ctrl+V).\n- Screenshot path: `Ctrl+Shift+Win+P` types the newest file in `Pictures\Screenshots`.\n- CLI: `sideclip --shots [n]`, `sideclip --newest` (no tray needed), `sideclip --picker`, `sideclip --pick` (tray must be running).\n- Agent skill (Grok, Codex, Claude Code): opens the picker (`--pick`) and inserts the chosen clip. Screenshot paths fall back to a dated text list of the last 3 files (no image ingest).\n- Release is tray-only. Hotkeys, type-out, and screenshot copy/daily-note options live under tray **Settings...**.\n- Optional: copy new screenshots to a folder and append them to today's Obsidian daily note (off by default).\n\n## Install\n\n### Prerequisite\n\nSideclip targets `net8.0-windows10.0.19041.0` (Windows 10 1809+ / Server 2019+). Optional OCR uses Windows OCR language packs.\n\nSideclip targets `net8.0-windows` and ships as a framework-dependent win-x64 build. Install the **.NET 8 Desktop Runtime (x64)** before running `Sideclip.exe`:\n\nhttps://dotnet.microsoft.com/download/dotnet/8.0\n\nIf the runtime is missing, the standard .NET host prompt asks you to download it.\n\n### GitHub Releases\n\nDownload `Sideclip-win-x64-v0.3.0.zip` from [Releases](https://github.com/kilrkrow/sideclip/releases/latest), extract it, and run `Sideclip.exe`.\n\nThe zip also includes `skills/sideclip` for a manual skill copy.\n\n### Chocolatey\n\nThe `sideclip` 0.3.0 package has been submitted to the Chocolatey community feed and is in moderation. Once it is approved:\n\n```powershell\nchoco install sideclip\n```\n\nChocolatey installs the tray, shims `sideclip` onto PATH, and copies the skill to `%USERPROFILE%\.agents\skills\sideclip` (Grok, Codex) and `%USERPROFILE%\.claude\skills\sideclip` (Claude Code).\n\n### From source\n\n```powershell\ngit clone https://github.com/kilrkrow/sideclip.git\ncd sideclip\ndotnet publish -c Release -r win-x64 --self-contained false -p:DebugType=None -p:DebugSymbols=false\n```\n\nOutput: `bin\Release\net8.0-windows\win-x64\publish\Sideclip.exe`\n\n## Daily use\n\n- **Picker:** `Ctrl+Shift+Win+V` (type to filter). Enter, Shift+Enter, double-click, and Copy place text or images on the ordinary Windows clipboard only. Your own Ctrl+V / Paste remains normal afterward. Sideclip does not simulate Ctrl+V from those actions.\n- **Screenshot path:** `Ctrl+Shift+Win+P` types the newest file in `Pictures\Screenshots`.\n- Tray icon for history, **Settings...**, TTL, About, and Exit.\n- Hotkeys are configurable from **Settings...**. Defaults never bind `Win+V`, `Ctrl+Win+V`, or `Ctrl+Win+P`.\n\n## Type-out (clipboard-free text)\n\nOpt in from tray **Settings...**: enable **Enable clipboard-free text type-out**, optionally set the text-only shortcut (default `Ctrl+Win+Shift+T`), and set bounded delay between chunks (0-250 ms; disabled when type-out is off). Apply saves; Close without Apply leaves prior applied values.\n\nApproved flow (no Arm phase and no tray Go send action):\n\n1. Explicitly select an existing text history entry in the picker (row click or keyboard navigation; merely opening the picker or the initial highlight does not select a source).\n2. Focus the destination window and place the caret.\n3. Press the configured text-only type-out shortcut once.\n\nSelection alone never types. Type-out never writes the entry to the clipboard and never falls back to Latest/clipboard content. Images, empty/file entries, invalid controls, malformed UTF-16, and wiped secrets are ineligible; choosing an image clears any older text source rather than falling back to it. The trigger is single-use: after an attempted run you must deliberately select again. A trigger with no source is a no-op.\n\nEsc cancels while a pending source exists outside the picker or while a run is active; picker Esc still clears the filter first, then closes and clears the source. Opening Settings, applying changes, turning type-out off, deleting/clearing/expiring the source, or exiting cancels safely. Off -> On and restart never restore a source. Disabled or blank/unassigned releases the shortcut; collisions and reserved chords (`Win+V`, `Ctrl+Win+V`, `Ctrl+Win+P`, and other reserved keys) are refused with an inline error (no hidden fallback).\n\nLive secrets may appear in the picker and be typed while their TTL is live (TTL Off is allowed). Typing does not start, reset, or extend TTL. An expired/deleted/cleared/trimmed source cannot run. Type-out adds no secret payload history, logs, file exports, or CLI/IPC route. CRLF/LF normalize to Enter keystrokes and tabs to Tab keystrokes; other text uses Unicode packets; supplementary characters stay adjacent UTF-16 units. NUL/unsupported controls/malformed UTF-16 are refused. Type-out remains off by default for fresh and legacy settings files.\n\nSendInput is subject to Windows UIPI/integrity-level and focus/target constraints. It cannot promise elevated/secure-desktop/game/RDP/hostile-target compatibility. A bounded chunk after a focus check can still race. Only the selected plain text is sent; there is no macro engine, OCR, image typing, or browser DOM automation.\n\nTab and Enter are real key presses. The destination decides what they do: a browser or form may move focus on Tab or submit on Enter. The picker shows a visible pre-send warning when the entry contains Tab or Enter/CR/LF. Sideclip stops when the foreground window changes, and also when the focused Win32 control changes in apps that use real child controls. It cannot see focus changes inside a browser page (DOM focus). Completion status reports keys sent and states insertion is not verified. There is no clipboard fallback.\n\nSee [type-out test plan and evidence ledger](docs/TYPEOUT-TEST-PLAN.md). Comparison notes versus AutoHotkey SendText and KeePass Auto-Type are in that document (deliberate targeting and cancellation; Sideclip is not a macro host).\n\n## CLI\n\n`sideclip` is on PATH after Chocolatey. From a GitHub zip, call `Sideclip.exe` with the same flags.\n\n```powershell\nsideclip --shots [n]     # n newest files in Pictures\Screenshots as JSON (default 3)\nsideclip --newest        # newest screenshot path\nsideclip --picker        # open the clipboard picker\nsideclip --pick          # open the picker; print the chosen clip as JSON\nsideclip --help\n```\n\n`--shots` and `--newest` work without the tray. `--picker` and `--pick` need this build of Sideclip running.\n\nSee [docs/CLI.md](docs/CLI.md).\n\n## Agent skills\n\n`/sideclip` opens the Sideclip picker and inserts the chosen clip into the chat. If the tray is not running, you get a dated text list of the last 3 files in `Pictures\Screenshots`. The skill does not ingest screenshot pixels.\n\nCanonical skill: `.agents/skills/sideclip`. `.\scripts\sync-agent-skill.ps1` copies it to `plugin/skills/sideclip`, `pack/chocolatey/sideclip/tools/skill/sideclip` (packed into the nupkg), and `.claude/skills/sideclip` (project-scope Claude Code). Do not edit the copies.\n\n### Install the skill\n\nFrom this repo, user-scope only:\n\n```powershell\n.\scripts\install-agent-skill.ps1\n```\n\nThat copies to `%USERPROFILE%\.agents\skills\sideclip` (Grok, Codex) and `%USERPROFILE%\.claude\skills\sideclip` (Claude Code).\n\nGrok plugin (this repo is the marketplace):\n\n```powershell\ngrok plugin marketplace add kilrkrow/sideclip\ngrok plugin install sideclip --trust\n```\n\nFrom a local clone (run in the repo root, where `.grok-plugin/marketplace.json` lives):\n\n```powershell\ngrok plugin marketplace add .\ngrok plugin install sideclip --trust\n```\n\nDirect plugin path: `grok plugin install kilrkrow/sideclip#plugin --trust`\n\nCodex: same `plugin\` tree (`plugin/.codex-plugin/plugin.json`). After the user-scope copy, `$sideclip` or `/skills`.\n\nAfter GitHub release `v0.3.0`, submit a remote catalog entry to [xai-org/plugin-marketplace](https://github.com/xai-org/plugin-marketplace) pointing at `https://github.com/kilrkrow/sideclip.git` (pinned SHA), so Grok `/marketplace` can list it.\n\n## Build and release zip\n\nOn Windows, `.\scripts\publish-release.ps1` publishes a framework-dependent win-x64 folder (no bundled runtime, no `.pdb`) to `artifacts\publish\win-x64`, zips `artifacts\Sideclip-win-x64-v0.3.0.zip` (includes `skills/sideclip`), and prints SHA256. Requires the .NET 8 Desktop Runtime (x64) on the machine that runs the app.\n\n## Version\n\n`0.3.0` in `Sideclip.csproj` (`Version` / `AssemblyVersion`). Public metadata uses `kilrkrow`.\n\n## Chocolatey packaging\n\nSee [pack/chocolatey/README.md](pack/chocolatey/README.md). Package id `sideclip` downloads `Sideclip-win-x64-v0.3.0.zip` from GitHub Releases and installs the agent skill.\n\n## License\n\n[MIT](LICENSE)\n

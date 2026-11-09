@@ -7,7 +7,9 @@ if (Test-Path $shortcut) {
   Remove-Item $shortcut -Force -ErrorAction SilentlyContinue
 }
 
-$skillDest = Join-Path $env:USERPROFILE '.agents\skills\sideclip'
-if (Test-Path -LiteralPath $skillDest) {
-  Remove-Item -LiteralPath $skillDest -Recurse -Force -ErrorAction SilentlyContinue
+foreach ($rel in @('.agents\skills\sideclip', '.claude\skills\sideclip')) {
+  $skillDest = Join-Path $env:USERPROFILE $rel
+  if (Test-Path -LiteralPath $skillDest) {
+    Remove-Item -LiteralPath $skillDest -Recurse -Force -ErrorAction SilentlyContinue
+  }
 }

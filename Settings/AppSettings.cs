@@ -1,4 +1,4 @@
-namespace Sideclip.Settings;
+﻿namespace Sideclip.Settings;
 
 internal sealed class AppSettings
 {
@@ -22,4 +22,25 @@ internal sealed class AppSettings
 
     /// <summary>Also put Windows OCR text in a collapsed callout under each embed. Only active with the daily note.</summary>
     public bool DailyNoteOcr { get; set; }
+
+    public bool TypeOutEnabled { get; set; }
+    public int TypeOutDelayMs { get; set; } = 12;
+    public string TypeOutGoHotkey { get; set; } = "Ctrl+Win+Shift+T";
+
+    public AppSettings Copy() => (AppSettings)MemberwiseClone();
+
+    public void CopyFrom(AppSettings other)
+    {
+        TtlSeconds = other.TtlSeconds; TtlEnabled = other.TtlEnabled;
+        Autostart = other.Autostart; ShowDebugWindow = other.ShowDebugWindow;
+        PickerHotkey = other.PickerHotkey; ScreenshotHotkey = other.ScreenshotHotkey;
+        ScreenshotCopyEnabled = other.ScreenshotCopyEnabled;
+        ScreenshotCopyFolder = other.ScreenshotCopyFolder;
+        DailyNoteEnabled = other.DailyNoteEnabled;
+        DailyNoteVault = other.DailyNoteVault;
+        DailyNoteHeading = other.DailyNoteHeading;
+        DailyNoteOcr = other.DailyNoteOcr;
+        TypeOutGoHotkey = other.TypeOutGoHotkey; TypeOutEnabled = other.TypeOutEnabled;
+        TypeOutDelayMs = other.TypeOutDelayMs;
+    }
 }

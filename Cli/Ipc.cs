@@ -20,8 +20,8 @@ internal sealed class PickResult
 
 internal sealed class IpcServer : IDisposable
 {
-    public static readonly string PipeName = "Sideclip.cmd" + AppProfile.NameSuffix;
-    public static readonly string MutexName = @"Local\Sideclip.single" + AppProfile.NameSuffix;
+    public static string PipeName => "Sideclip.cmd" + AppProfile.NameSuffix;
+    public static string MutexName => @"Local\Sideclip.single" + AppProfile.NameSuffix;
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {

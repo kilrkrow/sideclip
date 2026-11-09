@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -13,15 +13,28 @@ internal static class AppProfile
 {
     public const string DataDirEnv = "SIDECLIP_DATA_DIR";
 
-    private static readonly string? Override = ReadOverride();
+    public static bool IsIsolated => ReadOverride() is not null;
 
-    public static bool IsIsolated => Override is not null;
-
-    public static string DataDir =>
-        Override ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sideclip");
+    public static string DataDir
+    {
+        get
+        {
+            var ov = ReadOverride();
+            return ov ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sideclip");
+        }
+    }
 
     /// <summary>Empty for the normal profile, ".xxxxxxxx" for an isolated one.</summary>
-    public static string NameSuffix { get; } = BuildSuffix();
+    public static string NameSuffix
+    {
+        get
+        {
+            var ov = ReadOverride();
+            if (ov is null) return string.Empty;
+            var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(ov.ToUpperInvariant()));
+            return "." + Convert.ToHexString(bytes, 0, 4).ToLowerInvariant();
+        }
+    }
 
     private static string? ReadOverride()
     {
@@ -36,13 +49,5 @@ internal static class AppProfile
         {
             return null;
         }
-    }
-
-    private static string BuildSuffix()
-    {
-        if (Override is null)
-            return string.Empty;
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(Override.ToUpperInvariant()));
-        return "." + Convert.ToHexString(bytes, 0, 4).ToLowerInvariant();
     }
 }

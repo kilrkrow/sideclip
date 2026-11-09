@@ -7,7 +7,8 @@
   Copies:
     plugin/skills/sideclip
     pack/chocolatey/sideclip/tools/skill/sideclip
-  With -InstallUser, also copies to ~/.agents/skills/sideclip (Grok and Codex).
+  With -InstallUser, also copies to ~/.agents/skills/sideclip (Grok, Codex)
+  and ~/.claude/skills/sideclip (Claude Code).
 
 .EXAMPLE
   .\scripts\sync-agent-skill.ps1
@@ -38,9 +39,10 @@ function Copy-SkillTo {
 
 Copy-SkillTo (Join-Path $repoRoot 'plugin\skills\sideclip')
 Copy-SkillTo (Join-Path $repoRoot 'pack\chocolatey\sideclip\tools\skill\sideclip')
+Copy-SkillTo (Join-Path $repoRoot '.claude\skills\sideclip')
 
 if ($InstallUser) {
-    $user = Join-Path $env:USERPROFILE '.agents\skills\sideclip'
-    Copy-SkillTo $user
-    Write-Host "Grok: /sideclip    Codex: `$sideclip or /skills"
+    Copy-SkillTo (Join-Path $env:USERPROFILE '.agents\skills\sideclip')
+    Copy-SkillTo (Join-Path $env:USERPROFILE '.claude\skills\sideclip')
+    Write-Host "Grok: /sideclip    Codex: `$sideclip    Claude: /sideclip"
 }

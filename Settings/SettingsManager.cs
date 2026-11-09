@@ -35,6 +35,8 @@ internal static class SettingsManager
                     s.TtlEnabled = true;
                 if (s.TtlSeconds < 3) s.TtlSeconds = 12;
                 if (s.TtlSeconds > 300) s.TtlSeconds = 300;
+                if (s.TypeOutDelayMs < 0) s.TypeOutDelayMs = 0;
+                if (s.TypeOutDelayMs > 250) s.TypeOutDelayMs = 250;
                 return s;
             }
         }
@@ -49,17 +51,24 @@ internal static class SettingsManager
     public static void Save(AppSettings settings)
     {
         Directory.CreateDirectory(Dir);
-        File.WriteAllText(SettingsPath, JsonSerializer.Serialize(settings, JsonOpts));
+        var temporary = SettingsPath + ".tmp";
+        try
+        {
+            File.WriteAllText(temporary, JsonSerializer.Serialize(settings, JsonOpts));
+            File.Move(temporary, SettingsPath, overwrite: true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
         ApplyAutostart(settings.Autostart);
     }
 
     public static void ApplyAutostart(bool enabled)
     {
-        const string keyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SIDECLIP_DATA_DIR"))) return;
         // An isolated profile (SIDECLIP_DATA_DIR) must never rewrite the real autostart entry.
         if (AppProfile.IsIsolated)
             return;
 
+        const string keyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey(keyPath);

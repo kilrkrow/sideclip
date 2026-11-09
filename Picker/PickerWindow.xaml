@@ -13,10 +13,47 @@
         PreviewKeyDown="OnPreviewKeyDown"
         PreviewTextInput="OnPreviewTextInput"
         MouseLeftButtonDown="OnScrimClick">
+    <Window.Resources>
+        <!-- Dark button template: the default WPF template turns disabled
+             buttons light grey with near-invisible text on this card. -->
+        <Style x:Key="PickerButton" TargetType="Button">
+            <Setter Property="Background" Value="#3A414D" />
+            <Setter Property="Foreground" Value="#E5E9F6" />
+            <Setter Property="BorderBrush" Value="#C0C9D4" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#454C59" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#E5E9F6" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2E323F" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#262A35" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#4E5563" />
+                                <Setter Property="Foreground" Value="#9AA0AC" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid>
         <Border x:Name="Card"
                 Width="875"
-                Height="600"
+                Height="650"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 Background="#2E323F"
@@ -25,6 +62,37 @@
                 CornerRadius="0"
                 MouseLeftButtonDown="OnCardClick">
             <DockPanel>
+                <Grid DockPanel.Dock="Bottom" Margin="18,0,18,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="FooterHelp"
+                               Grid.Column="1"
+                               Margin="16,2,0,0"
+                               MaxWidth="740"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Bottom"
+                               TextAlignment="Right"
+                               TextWrapping="Wrap"
+                               AutomationProperties.Name="Sideclip picker status and keyboard help"
+                               AutomationProperties.LiveSetting="Polite">
+                        <Run Text="Sideclip 0.3.0 - Select text for clipboard-free type out." />
+                        <LineBreak />
+                        <Run x:Name="TypeOutReason" Text="Images cannot be typed." Foreground="#ABAFBC" />
+                        <LineBreak />
+                        <Run x:Name="NavHelp" Foreground="#ABAFBC" />
+                        <LineBreak />
+                        <Run x:Name="CopyHelp" Foreground="#ABAFBC" />
+                        <LineBreak />
+                        <Run x:Name="TypeOutHelp" Foreground="#ABAFBC" />
+                    </TextBlock>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Bottom">
+                        <Button x:Name="CopyButton" Content="Copy" ToolTip="Copy without pasting"
+                                Style="{StaticResource PickerButton}"
+                                Click="OnCopyClick" />
+                    </StackPanel>
+                </Grid>
                 <DockPanel DockPanel.Dock="Top" Margin="18,16,18,6">
                     <Button x:Name="ClearButton"
                             DockPanel.Dock="Right"
@@ -56,7 +124,6 @@
                              Background="Transparent"
                              Foreground="#E5E9F6"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             MouseDoubleClick="OnRowActivate"
                              SelectionChanged="OnSelectionChanged">
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
@@ -66,6 +133,7 @@
                                 <Setter Property="Foreground" Value="#E5E9F6" />
                                 <Setter Property="Background" Value="Transparent" />
                                 <EventSetter Event="MouseDoubleClick" Handler="OnRowActivate" />
+                                <EventSetter Event="PreviewMouseLeftButtonDown" Handler="OnRowChoose" />
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="ListBoxItem">
@@ -109,4 +177,3 @@
         </Border>
     </Grid>
 </Window>
-

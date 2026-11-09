@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -7,11 +7,12 @@ using Sideclip.Clipboard;
 using Sideclip.History;
 using Sideclip.Hotkeys;
 using Sideclip.Native;
-using Sideclip.Obsidian;
 using Sideclip.Picker;
+using Sideclip.Obsidian;
 using Sideclip.Screenshot;
 using Sideclip.Settings;
 using Sideclip.Tray;
+using Sideclip.TypeOut;
 
 namespace Sideclip;
 
@@ -22,11 +23,16 @@ public partial class App : System.Windows.Application
     private ClipHistoryStore? _history;
     private HotkeyListener? _hotkeys;
     private TrayService? _tray;
+#pragma warning disable CS0649,CS0169 // This optional debug window is only assigned in debug builds.
     private MainWindow? _debug;
+#pragma warning restore CS0649
     private PickerWindow? _picker;
     private Mutex? _single;
     private IpcServer? _ipc;
+    private TypeOutSession? _typeOut;
+    private SettingsWindowHost? _settingsWindows;
     private TaskCompletionSource<PickResult>? _pickWaiter;
+    private readonly List<string> _pickPngPaths = new();
     private IssueNotifier? _issues;
     private ScreenshotCopier? _copier;
     private DailyNoteService? _dailyNotes;
@@ -43,14 +49,7 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
-            try
-            {
-                ConsoleAttach.Ensure();
-                Console.Error.WriteLine(ex.Message);
-            }
-            catch
-            {
-            }
+            try { ConsoleAttach.Ensure(); Console.Error.WriteLine(ex.Message); } catch { }
             Shutdown();
             return;
         }
@@ -65,29 +64,58 @@ public partial class App : System.Windows.Application
             Shutdown();
             return;
         }
-
         base.OnStartup(e);
 
         _settings = SettingsManager.Load();
         SettingsManager.ApplyAutostart(_settings.Autostart);
-
         _watcher = new ClipboardWatcher();
         _history = new ClipHistoryStore(Dispatcher, OnSecretExpired, TimeSpan.FromSeconds(_settings.TtlSeconds), _settings.TtlEnabled);
 
-        _watcher.ClipCaptured += OnClipCaptured;
-        _watcher.ImageCaptured += OnImageCaptured;
+        _typeOut = new TypeOutSession(
+            entry => _history!.IsTypeOutSource(entry) && entry.HasPayload && entry.TryGetText() is not null,
+            ReportTypeOut,
+            releaseModifiers: () =>
+            {
+                InputSender.ReleaseModifiers();
+                Task.Delay(80).GetAwaiter().GetResult();
+            },
+            activateHotkeys: () =>
+            {
+                return _hotkeys?.TypeOutRegistered == true && _hotkeys.SetEscapeActive(true);
+            },
+            deactivateHotkeys: () => _hotkeys?.SetEscapeActive(false),
+            postToUi: action => Dispatcher.BeginInvoke(action));
+        _typeOut.SetEnabled(_settings.TypeOutEnabled);
+        _history.EntryInvalidatedWithReason += (entry, reason) => _typeOut.EntryChanged(entry, reason);
+
+        _watcher.ClipCaptured += (text, secret, owner) =>
+        {
+            _history.Add(text, secret, owner);
+#if DEBUG
+            _debug?.NoteCapture(secret, owner);
+#endif
+        };
+        _watcher.ImageCaptured += (png, owner) =>
+        {
+            _history.Add(string.Empty, isSecret: false, owner, png);
+#if DEBUG
+            _debug?.NoteCapture(false, owner);
+#endif
+        };
         _watcher.Start();
 
         _hotkeys = new HotkeyListener();
-        _hotkeys.PickerRequested += () => Dispatcher.Invoke(OpenPicker);
-        _hotkeys.ScreenshotPathRequested += () => Dispatcher.Invoke(TypeScreenshotPath);
+        _hotkeys.PickerRequested += () => Dispatcher.BeginInvoke(OpenPicker);
+        _hotkeys.ScreenshotPathRequested += () => Dispatcher.BeginInvoke(TypeScreenshotPath);
+        _hotkeys.TypeOutGoRequested += () => Dispatcher.BeginInvoke(GoTypeOut);
+        _hotkeys.TypeOutCancelRequested += () => Dispatcher.BeginInvoke(CancelTypeOut);
+        _hotkeys.RegistrationChanged += NotifyPickerConfiguration;
         _hotkeys.Start();
-        _hotkeys.Apply(_settings.PickerHotkey, _settings.ScreenshotHotkey);
+        _hotkeys.Apply(_settings.PickerHotkey, _settings.ScreenshotHotkey, _settings.TypeOutGoHotkey, _settings.TypeOutEnabled);
 
         _tray = new TrayService(_settings, OnSettingsChanged);
         _tray.OpenPicker += OpenPicker;
-        _tray.ToggleDebug += ApplyDebugVisibility;
-        _tray.EditHotkeys += OpenHotkeySettings;
+        _tray.OpenSettings += OpenSettings;
         _tray.ClearHistory += ClearHistory;
         _tray.ExitApp += Shutdown;
         _tray.RefreshHotkeyLabel();
@@ -102,24 +130,43 @@ public partial class App : System.Windows.Application
 
         // Test hook for UI checks: open Settings right away instead of via the tray menu.
         if (Environment.GetEnvironmentVariable("SIDECLIP_OPEN_SETTINGS") == "1")
-            Dispatcher.BeginInvoke(() => OpenHotkeySettings(openInactive: true), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-
+            Dispatcher.BeginInvoke(() => OpenSettings(openInactive: true), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 #if DEBUG
         _debug = new MainWindow(_watcher, _history);
         ApplyDebugVisibility();
-        _debug.NoteCapture(false, "picker " + _settings.PickerHotkey + " / path " + _settings.ScreenshotHotkey);
+        _debug.NoteCapture(false, "Picker and type-out ready.");
 #endif
     }
 
     private void OnSettingsChanged(AppSettings settings)
     {
+        _typeOut?.Cancel(TypeOutSession.HotkeysChangedMessage);
         SettingsManager.Save(settings);
         _history?.SetTtl(TimeSpan.FromSeconds(settings.TtlSeconds), settings.TtlEnabled);
-        _hotkeys?.Apply(settings.PickerHotkey, settings.ScreenshotHotkey);
+        _typeOut?.SetEnabled(settings.TypeOutEnabled);
+        _hotkeys?.Apply(settings.PickerHotkey, settings.ScreenshotHotkey, settings.TypeOutGoHotkey, settings.TypeOutEnabled);
         _tray?.RefreshHotkeyLabel();
+        NotifyPickerConfiguration();
         ApplyDebugVisibility();
-        if (!string.IsNullOrWhiteSpace(_hotkeys?.LastError))
+        if (!_typeOut!.HasEntry && !string.IsNullOrWhiteSpace(_hotkeys?.LastError))
             _tray?.Hint("Sideclip", _hotkeys.LastError.Trim());
+        ApplyScreenshotFeatures();
+    }
+
+    private void OpenSettings() => OpenSettings(openInactive: false);
+
+    private void OpenSettings(bool openInactive)
+    {
+        _settingsWindows ??= new SettingsWindowHost(
+            () => new SettingsForm(_settings, TrySaveSettings, ScreenshotFolder.Resolve(), ObsidianVaults.Load(), WindowsOcr.IsAvailable, openInactive),
+            () => _typeOut?.Cancel(_typeOut.HasEntry ? TypeOutSession.HotkeysChangedMessage : null));
+        if (openInactive && _settingsWindows.Current is { IsDisposed: false })
+            _settingsWindows.Current.Close();
+        _settingsWindows.Open();
+        // A maximized topmost picker otherwise covers the native Settings form.
+        // This is transient: demote Settings again when that picker closes.
+        if (_settingsWindows.Current is { } settingsWindow)
+            settingsWindow.TopMost = _picker?.IsVisible == true;
     }
 
     /// <summary>(Re)starts the screenshot copier and daily-note writer from the current settings.</summary>
@@ -142,11 +189,9 @@ public partial class App : System.Windows.Application
                 return;
             }
 
-            // Setting 2 only runs while Setting 1 is on and valid; its saved values stay either way.
             var vault = (_settings.DailyNoteVault ?? "").Trim();
             if (_settings.DailyNoteEnabled && vault.Length > 0)
             {
-                // OCR is optional and runs on the note queue with a timeout; the copy never waits for it.
                 DailyNoteService.Recognizer? ocr = _settings.DailyNoteOcr && WindowsOcr.IsAvailable ? WindowsOcr.RecognizeAsync : null;
                 _dailyNotes = new DailyNoteService(vault, _issues, ocr, TimeSpan.FromSeconds(15), _settings.DailyNoteHeading);
             }
@@ -164,51 +209,58 @@ public partial class App : System.Windows.Application
         }
     }
 
-    private void OpenHotkeySettings() => OpenHotkeySettings(openInactive: false);
 
-    private void OpenHotkeySettings(bool openInactive)
+    private string? TrySaveSettings(AppSettings edited)
     {
-        using var form = new SettingsForm(_settings, ScreenshotFolder.Resolve(), ObsidianVaults.Load(), WindowsOcr.IsAvailable, openInactive);
-        if (form.ShowDialog() != System.Windows.Forms.DialogResult.OK)
-            return;
-
-        _settings.PickerHotkey = form.PickerHotkey;
-        _settings.ScreenshotHotkey = form.ScreenshotHotkey;
-        _settings.ScreenshotCopyEnabled = form.ScreenshotCopyEnabled;
-        _settings.ScreenshotCopyFolder = form.ScreenshotCopyFolder;
-        _settings.DailyNoteEnabled = form.DailyNoteEnabled;
-        _settings.DailyNoteVault = form.DailyNoteVault;
-        _settings.DailyNoteOcr = form.DailyNoteOcr;
-        _settings.DailyNoteHeading = form.DailyNoteHeading;
-        OnSettingsChanged(_settings);
+        _typeOut?.Cancel(TypeOutSession.HotkeysChangedMessage);
+        // Only the fields offered by this form change. Preserve current tray TTL/autostart.
+        var next = _settings.Copy();
+        next.PickerHotkey = edited.PickerHotkey;
+        next.ScreenshotHotkey = edited.ScreenshotHotkey;
+        next.TypeOutGoHotkey = edited.TypeOutGoHotkey;
+        next.TypeOutEnabled = edited.TypeOutEnabled;
+        next.TypeOutDelayMs = Math.Clamp(edited.TypeOutDelayMs, 0, 250);
+        next.ScreenshotCopyEnabled = edited.ScreenshotCopyEnabled;
+        next.ScreenshotCopyFolder = edited.ScreenshotCopyFolder ?? "";
+        next.DailyNoteEnabled = edited.DailyNoteEnabled;
+        next.DailyNoteVault = edited.DailyNoteVault ?? "";
+        next.DailyNoteHeading = edited.DailyNoteHeading ?? "";
+        next.DailyNoteOcr = edited.DailyNoteOcr;
+        if (_hotkeys is null || !_hotkeys.TryApply(next.PickerHotkey, next.ScreenshotHotkey, next.TypeOutGoHotkey, next.TypeOutEnabled))
+        { NotifyPickerConfiguration(); return _hotkeys?.LastError ?? "Shortcut registration is unavailable."; }
+        try { SettingsManager.Save(next); }
+        catch (Exception)
+        {
+            _hotkeys.TryApply(_settings.PickerHotkey, _settings.ScreenshotHotkey, _settings.TypeOutGoHotkey, _settings.TypeOutEnabled);
+            NotifyPickerConfiguration();
+            return "Settings could not be saved. Previous configuration kept. " + (_hotkeys.LastError ?? "");
+        }
+        _settings.CopyFrom(next);
+        _typeOut?.SetEnabled(next.TypeOutEnabled);
+        _tray?.RefreshHotkeyLabel();
+        NotifyPickerConfiguration();
         ApplyScreenshotFeatures();
-        _debug?.NoteCapture(false, "picker " + _settings.PickerHotkey + " / path " + _settings.ScreenshotHotkey);
+        return null;
     }
+
+    private void NotifyPickerConfiguration()
+    {
+        // Agreed picker-owned API: empty = unassigned; null = unavailable.
+        _picker?.UpdateTypeOutHelp(_settings.TypeOutEnabled, CurrentTypeOutShortcutDisplay);
+    }
+
+    private string? CurrentTypeOutShortcutDisplay =>
+        TypeOutShortcutDisplay(_settings.TypeOutGoHotkey, _hotkeys?.TypeOutRegistered == true);
+
+    internal static string? TypeOutShortcutDisplay(string? configured, bool registered) =>
+        string.IsNullOrWhiteSpace(configured) ? "" : registered ? configured : null;
 
     private void ApplyDebugVisibility()
     {
 #if DEBUG
-        if (_debug is null)
-            return;
-        if (_settings.ShowDebugWindow)
-            _debug.Show();
-        else
-            _debug.Hide();
+        if (_debug is null) return;
+        if (_settings.ShowDebugWindow) _debug.Show(); else _debug.Hide();
 #endif
-    }
-
-    private void OnClipCaptured(string text, bool isSecret, string owner)
-    {
-        if (!_settings.TtlEnabled)
-            isSecret = false;
-        _history?.Add(text, isSecret, owner);
-        _debug?.NoteCapture(isSecret, owner);
-    }
-
-    private void OnImageCaptured(byte[] png, string owner)
-    {
-        _history?.Add(string.Empty, isSecret: false, owner, png);
-        _debug?.NoteCapture(false, owner);
     }
 
     private void OnSecretExpired(ClipEntry entry)
@@ -216,13 +268,15 @@ public partial class App : System.Windows.Application
         var cleared = false;
         if (_history is not null && _watcher is not null && ReferenceEquals(_history.Latest, entry))
             cleared = _watcher.ClearLiveIfMatches(entry);
+#if DEBUG
         _debug?.NoteExpire(cleared);
+#endif
     }
 
     private void ClearHistory()
     {
+        _typeOut?.Cancel();
         _history?.ClearAll();
-        _debug?.NoteCapture(false, "history cleared");
         if (_picker is not null)
         {
             _picker.Close();
@@ -232,21 +286,26 @@ public partial class App : System.Windows.Application
 
     private void OpenPicker()
     {
-        if (_history is null || _watcher is null)
-            return;
+        if (_history is null || _watcher is null) return;
+        if (_picker is not null) { _picker.Activate(); return; }
 
-        if (_picker is not null)
-        {
-            _picker.Activate();
-            return;
-        }
-
-        var restore = NativeMethods.GetForegroundWindow();
-        _picker = new PickerWindow(_history.PickerEntries(), restore, CommitPick);
+        _typeOut?.Cancel();
+        var restore = IntPtr.Zero;
+        _picker = new PickerWindow(_history.PickerEntries(), restore, CommitPick, _settings.TypeOutEnabled, CurrentTypeOutShortcutDisplay);
         _picker.Deleted += entry => _history.RemoveEntry(entry);
+        _picker.CandidateSelected += entry => _typeOut?.SelectCandidate(entry);
+        _picker.CandidateInvalidated += () => _typeOut?.Cancel();
+        _picker.Activated += (_, _) => _typeOut?.RefreshCancellation(true);
+        _picker.Deactivated += (_, _) => _typeOut?.RefreshCancellation(false);
         _picker.Cleared += ClearHistory;
         _picker.Cancelled += () => FinishPick(new PickResult { Kind = "cancel" });
-        _picker.Closed += (_, _) => _picker = null;
+        _picker.Closed += (_, _) =>
+        {
+            _picker = null;
+            if (_settingsWindows?.Current is { } settingsWindow) settingsWindow.TopMost = false;
+            _typeOut?.RefreshCancellation(false);
+        };
+        NotifyPickerConfiguration();
         _picker.Show();
         _picker.Activate();
     }
@@ -258,8 +317,7 @@ public partial class App : System.Windows.Application
         {
             _pickWaiter = tcs;
             OpenPicker();
-            if (_picker is null && !tcs.Task.IsCompleted)
-                tcs.TrySetResult(new PickResult { Kind = "cancel" });
+            if (_picker is null && !tcs.Task.IsCompleted) tcs.TrySetResult(new PickResult { Kind = "cancel" });
         });
         return tcs.Task;
     }
@@ -275,31 +333,33 @@ public partial class App : System.Windows.Application
     {
         if (_pickWaiter is not null)
         {
-            FinishPick(ResultFromEntry(entry));
+            var result = ResultFromEntry(entry);
+            if (entry.IsSecret) _history?.RemoveEntry(entry);
+            FinishPick(result);
             return;
         }
-
-        if (_watcher is null)
-            return;
-
+        if (_watcher is null) return;
         if (entry.IsImage && entry.ImagePng is not null)
             _watcher.SetImageSuppressing(entry.ImagePng);
         else
         {
-            var text = entry.TryGetNonSecretText();
-            if (string.IsNullOrEmpty(text))
-                return;
-            _watcher.SetTextSuppressing(text);
+            var text = entry.TryGetText();
+            if (string.IsNullOrEmpty(text)) return;
+            _watcher.SetTextSuppressing(text, entry.IsSecret);
         }
+    }
 
-        if (!paste)
-            return;
+    private void GoTypeOut()
+    {
+        if (_hotkeys?.TypeOutRegistered == true)
+            _typeOut?.Go(Math.Clamp(_settings.TypeOutDelayMs, 0, 250));
+    }
+    private void CancelTypeOut() => _typeOut?.Cancel(TypeOutSession.IdleMessage);
 
-        Dispatcher.BeginInvoke(new Action(() =>
-        {
-            Thread.Sleep(40);
-            InputSender.CtrlV();
-        }), System.Windows.Threading.DispatcherPriority.Background);
+    private void ReportTypeOut(string message)
+    {
+        _tray?.RefreshTypeOutStatus(message);
+        _settingsWindows?.Current?.SetStatus(message);
     }
 
     private void TypeScreenshotPath()
@@ -307,41 +367,40 @@ public partial class App : System.Windows.Application
         if (!ScreenshotPathTyper.TryTypeNewest(out var reason, out var path))
         {
             _tray?.Hint("Sideclip", reason ?? "No screenshot.");
-            _debug?.NoteCapture(false, reason ?? "screenshot typer failed");
             return;
         }
-
-        _debug?.NoteCapture(false, "typed " + path);
+#if DEBUG
+        _debug?.NoteCapture(false, "Screenshot path typed.");
+#endif
     }
 
-    private static PickResult ResultFromEntry(ClipEntry entry)
+    private PickResult ResultFromEntry(ClipEntry entry)
     {
         if (entry.IsImage && entry.ImagePng is { Length: > 0 })
         {
-            var path = Path.Combine(Path.GetTempPath(), "sideclip-pick.png");
+            var path = Path.Combine(Path.GetTempPath(), "sideclip-pick-" + Guid.NewGuid().ToString("N") + ".png");
             File.WriteAllBytes(path, entry.ImagePng);
+            _pickPngPaths.Add(path);
             return new PickResult { Kind = "image", Path = path };
         }
-
-        return new PickResult { Kind = "text", Text = entry.TryGetNonSecretText() ?? "" };
+        return new PickResult { Kind = "text", Text = entry.TryGetText() ?? "" };
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _picker?.Close();
+        _typeOut?.Dispose();
         _copier?.Dispose();
         _dailyNotes?.Dispose();
+        _settingsWindows?.Dispose();
+        _picker?.Close();
         _ipc?.Dispose();
         _hotkeys?.Dispose();
         _tray?.Dispose();
         _history?.Dispose();
         _watcher?.Dispose();
-        if (_debug is not null) { _debug.AllowClose = true; _debug.Close(); }
         try { _single?.ReleaseMutex(); } catch { }
         _single?.Dispose();
+        foreach (var p in _pickPngPaths) { try { File.Delete(p); } catch { } }
         base.OnExit(e);
     }
 }
-
-
-

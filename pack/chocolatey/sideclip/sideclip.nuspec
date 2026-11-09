@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>sideclip</id>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
     <title>Sideclip</title>
     <authors>kilrkrow</authors>
     <projectUrl>https://github.com/kilrkrow/sideclip</projectUrl>
@@ -16,21 +16,24 @@
     <description>
 Sideclip is a Windows tray clipboard that sits beside Win+V. It never steals Win+V.
 
-- Watches the clipboard. Non-secrets persist locally. Secrets stay in memory and expire (always-secret for 1Password.exe / 1Password-BrowserSupport owner or foreground; browsers use the heuristic).
-- Picker: Ctrl+Shift+Win+V (type to filter, Enter paste, Shift+Enter copy).
+- Watches the clipboard. Non-secrets persist locally. Secrets stay in memory, expire, and may appear in the picker until wiped (always-secret for 1Password.exe / 1Password-BrowserSupport owner or foreground; browsers use the heuristic).
+- Picker: Ctrl+Shift+Win+V (type to filter; Enter, Shift+Enter, double-click, and Copy put text or images on the ordinary Windows clipboard only). Optional clipboard-free text type-out is off by default (Settings...): deliberately select text, focus the destination, then press the configured shortcut.
 - Screenshot path: Ctrl+Shift+Win+P types the newest file in Pictures\Screenshots.
 - CLI: sideclip --shots, --newest, --picker, --pick.
 - Agent skill (Grok / Codex): copies to ~/.agents/skills/sideclip so /sideclip opens the picker.
 
-This package downloads the official GitHub Release ZIP, installs Sideclip.exe, adds a Start Menu shortcut, shims `sideclip` onto PATH, and installs the agent skill.
+This package downloads the official GitHub Release ZIP, installs Sideclip.exe, adds a Start Menu shortcut, shims `sideclip` onto PATH, and installs the agent skill. Requires the .NET 8 Desktop Runtime (x64); Chocolatey dependency: dotnet-8.0-desktopruntime.
 
 ## Project
 
 https://github.com/kilrkrow/sideclip
     </description>
     <tags>clipboard tray windows grok codex skill</tags>
-    <releaseNotes>https://github.com/kilrkrow/sideclip/releases/tag/v0.2.0</releaseNotes>
+    <releaseNotes>https://github.com/kilrkrow/sideclip/releases/tag/v0.3.0</releaseNotes>
     <copyright>Copyright (c) 2026 kilrkrow</copyright>
+    <dependencies>
+      <dependency id="dotnet-8.0-desktopruntime" version="8.0.0" />
+    </dependencies>
   </metadata>
   <files>
     <file src="tools\**" target="tools" />

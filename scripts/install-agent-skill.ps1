@@ -4,7 +4,8 @@
 
 .DESCRIPTION
   Syncs the canonical skill into plugin/ and Chocolatey pack folders, then
-  copies it to ~/.agents/skills/sideclip. Both Grok and Codex scan that folder.
+  copies it to ~/.agents/skills/sideclip (Grok, Codex) and ~/.claude/skills/sideclip
+  (Claude Code).
 
 .EXAMPLE
   .\scripts\install-agent-skill.ps1
