@@ -65,7 +65,7 @@ internal sealed class SettingsForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = MinimizeBox = false;
         AutoScroll = true;
-        ClientSize = new Size(600, 720);
+        ClientSize = new Size(600, 734);
         Font = new Font("Consolas", 10f);
         BackColor = Color.FromArgb(46, 50, 63);
         ForeColor = Color.FromArgb(229, 233, 246);
@@ -115,9 +115,11 @@ internal sealed class SettingsForm : Form
 
         Controls.Add(new Label
         {
-            Text = "Choose a shortcut box and press keys. Backspace clears. Blank means unassigned. Esc closes without applying. Select text, focus destination, then use its shortcut. Tab/Enter may navigate or submit. Insertion is not verified.",
-            Location = new Point(16, 220),
-            Size = new Size(560, 72),
+            Name = "TypeOutHelp",
+            AccessibleName = "Type-out and hotkey help",
+            Text = "Choose a shortcut box and press keys. Backspace clears.\r\nBlank means unassigned. Esc closes without applying.\r\nSelect text, focus destination, then use its shortcut.\r\nTab/Enter may navigate or submit. Insertion is not verified.",
+            Location = new Point(16, 226),
+            Size = new Size(548, 80),
             ForeColor = Text2
         });
 
@@ -125,7 +127,7 @@ internal sealed class SettingsForm : Form
         {
             Name = "ScreenshotsGroup",
             Text = "Screenshots",
-            Location = new Point(16, 300),
+            Location = new Point(16, 314),
             Size = new Size(560, 300),
             ForeColor = ForeColor
         };
@@ -248,13 +250,13 @@ internal sealed class SettingsForm : Form
         _vaultBrowse.Click += (_, _) => BrowseVault();
         SyncScreenshotDependents();
 
-        _error = new Label { Name = "SettingsError", AccessibleName = "Settings validation error", Location = new Point(16, 610), Size = new Size(560, 40), ForeColor = Color.LightSalmon };
-        _status = new Label { Name = "TypeOutStatus", AccessibleName = "Type-out status", Location = new Point(16, 652), Size = new Size(560, 28), ForeColor = Text2 };
+        _error = new Label { Name = "SettingsError", AccessibleName = "Settings validation error", Location = new Point(16, 624), Size = new Size(560, 40), ForeColor = Color.LightSalmon };
+        _status = new Label { Name = "TypeOutStatus", AccessibleName = "Type-out status", Location = new Point(16, 666), Size = new Size(560, 28), ForeColor = Text2 };
         Controls.Add(_error); Controls.Add(_status);
-        Controls.Add(new Label { Name = "VersionLabel", Text = "Sideclip " + DisplayVersion + " | kilrkrow", Location = new Point(16, 688), Size = new Size(300, 24) });
-        var applyButton = new Button { Name = "ApplySettings", Text = "Apply", Location = new Point(400, 682), Size = new Size(86, 32) };
+        Controls.Add(new Label { Name = "VersionLabel", Text = "Sideclip " + DisplayVersion + " | kilrkrow", Location = new Point(16, 702), Size = new Size(300, 24) });
+        var applyButton = new Button { Name = "ApplySettings", Text = "Apply", Location = new Point(400, 696), Size = new Size(86, 32) };
         applyButton.Click += (_, _) => ApplyChanges();
-        var close = new Button { Name = "CancelSettings", Text = "Close", Location = new Point(498, 682), Size = new Size(86, 32) };
+        var close = new Button { Name = "CancelSettings", Text = "Close", Location = new Point(498, 696), Size = new Size(86, 32) };
         close.Click += (_, _) => Close(); CancelButton = close;
         Controls.Add(applyButton); Controls.Add(close);
     }
