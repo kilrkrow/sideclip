@@ -23,18 +23,21 @@ internal sealed class DailyNoteService : IDisposable
     private readonly Recognizer? _ocr;
     private readonly TimeSpan _ocrTimeout;
     private readonly string? _heading;
+    private readonly DailyNoteLinkStyle _style;
     private readonly Channel<(string File, DateTime At)> _queue =
         Channel.CreateUnbounded<(string, DateTime)>(new UnboundedChannelOptions { SingleReader = true });
     private readonly CancellationTokenSource _cts = new();
 
     /// <param name="heading">Optional ATX heading ("## Sideclip Clips"); clips go under it. Blank = end of note.</param>
-    public DailyNoteService(string vault, IssueNotifier issues, Recognizer? ocr = null, TimeSpan? ocrTimeout = null, string? heading = null)
+    /// <param name="style">Embed when the primary copy is inside the vault; Wikilink/Markdown for link mode.</param>
+    public DailyNoteService(string vault, IssueNotifier issues, Recognizer? ocr = null, TimeSpan? ocrTimeout = null, string? heading = null, DailyNoteLinkStyle style = DailyNoteLinkStyle.Embed)
     {
         _heading = NoteSections.IsValidHeading(heading) ? heading!.TrimEnd() : null;
         _vault = vault;
         _issues = issues;
         _ocr = ocr;
         _ocrTimeout = ocrTimeout ?? TimeSpan.FromSeconds(15);
+        _style = style;
         _ = Task.Run(WorkAsync);
     }
 
@@ -63,7 +66,7 @@ internal sealed class DailyNoteService : IDisposable
     {
         try
         {
-            var lines = new List<string> { DailyNoteText.EntryLine(_vault, file, at) };
+            var lines = new List<string> { DailyNoteText.EntryLine(_vault, file, at, _style) };
             if (_ocr is not null)
             {
                 var text = await RecognizeAsync(file, ct).ConfigureAwait(false);
@@ -138,3 +141,4 @@ internal sealed class DailyNoteService : IDisposable
         _cts.CancelAfter(TimeSpan.FromSeconds(5));
     }
 }
+

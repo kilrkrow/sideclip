@@ -9,44 +9,85 @@ public class DailyNoteTextTests
     private static readonly DateTime At = new(2026, 10, 27, 14, 5, 32);
 
     [Fact]
-    public void Inside_vault_embeds_vault_relative_path()
+    public void Embed_mode_uses_vault_relative_wikilink()
     {
-        var line = DailyNoteText.EntryLine(@"D:\Vault", @"D:\Vault\Attachments\Shots\Screenshot 2026-10-27 140532.png", At);
+        var line = DailyNoteText.EntryLine(@"D:\Vault", @"D:\Vault\Attachments\Shots\Screenshot 2026-10-27 140532.png", At, DailyNoteLinkStyle.Embed);
         Assert.Equal("- 14:05:32 ![[Attachments/Shots/Screenshot 2026-10-27 140532.png]]", line);
     }
 
     [Fact]
-    public void Inside_vault_with_trailing_slash_and_case_difference()
+    public void Embed_mode_trailing_slash_and_case_difference()
     {
-        var line = DailyNoteText.EntryLine(@"d:\vault\", @"D:\Vault\shot (1).png", At);
+        var line = DailyNoteText.EntryLine(@"d:\vault\", @"D:\Vault\shot (1).png", At, DailyNoteLinkStyle.Embed);
         Assert.Equal("- 14:05:32 ![[shot (1).png]]", line);
     }
 
     [Fact]
-    public void Wikilink_breaking_names_use_markdown_embed()
+    public void Embed_wikilink_breaking_names_use_markdown_embed()
     {
-        var line = DailyNoteText.EntryLine(@"D:\Vault", @"D:\Vault\a [b] #c.png", At);
+        var line = DailyNoteText.EntryLine(@"D:\Vault", @"D:\Vault\a [b] #c.png", At, DailyNoteLinkStyle.Embed);
         Assert.Equal("- 14:05:32 ![](a%20%5Bb%5D%20%23c.png)", line);
     }
 
     [Fact]
-    public void Outside_vault_links_with_file_url()
+    public void Wikilink_style_default_for_link_mode()
     {
-        var line = DailyNoteText.EntryLine(@"D:\Vault", @"D:\Shot Copies\Screenshot (3).png", At);
-        Assert.Equal("- 14:05:32 [Screenshot (3).png](file:///D:/Shot%20Copies/Screenshot%20%283%29.png)", line);
+        var line = DailyNoteText.EntryLine(@"D:\Vault", @"D:\Vault\Attachments\Shots\Screenshot (3).png", At, DailyNoteLinkStyle.Wikilink);
+        Assert.Equal("- 14:05:32 [[Attachments/Shots/Screenshot (3).png]]", line);
+        Assert.DoesNotContain("file:///", line);
     }
 
     [Fact]
-    public void Sibling_folder_with_same_prefix_is_outside()
+    public void Markdown_style_uses_shot_label_and_encodes()
     {
-        var line = DailyNoteText.EntryLine(@"D:\Vault", @"D:\Vault2\a.png", At);
-        Assert.StartsWith("- 14:05:32 [a.png](file:///D:/Vault2/a.png)", line);
+        var line = DailyNoteText.EntryLine(@"D:\Vault", @"D:\Vault\Attachments\Shots\Screenshot (3).png", At, DailyNoteLinkStyle.Markdown);
+        Assert.Equal("- 14:05:32 [shot](Attachments/Shots/Screenshot%20%283%29.png)", line);
+        Assert.DoesNotContain("file:///", line);
     }
 
     [Fact]
-    public void File_url_encodes_unicode_and_percent()
+    public void Outside_vault_file_is_rejected()
     {
-        Assert.Equal("file:///C:/x/caf%C3%A9%2550.png", DailyNoteText.FileUrl("C:\\x\\caf\u00e9%50.png"));
+        Assert.Throws<ArgumentException>(() => DailyNoteText.EntryLine(@"D:\Vault", @"D:\Shot Copies\a.png", At, DailyNoteLinkStyle.Wikilink));
+    }
+
+    [Fact]
+    public void Vault_folder_default_and_normalization()
+    {
+        Assert.True(DailyNoteText.TryNormalizeVaultFolder("", out var n, out _));
+        Assert.Equal(DailyNoteText.DefaultVaultFolder, n);
+        Assert.True(DailyNoteText.TryNormalizeVaultFolder(@"Attachments\Shots", out n, out _));
+        Assert.Equal("Attachments/Shots", n);
+        Assert.True(DailyNoteText.TryNormalizeVaultFolder("  custom/Folder  ", out n, out _));
+        Assert.Equal("custom/Folder", n);
+    }
+
+    [Fact]
+    public void Vault_folder_rejects_rooted_drive_and_dotdot()
+    {
+        Assert.False(DailyNoteText.TryNormalizeVaultFolder(@"D:\Vault\Attachments", out _, out _));
+        Assert.False(DailyNoteText.TryNormalizeVaultFolder("/Attachments", out _, out _));
+        Assert.False(DailyNoteText.TryNormalizeVaultFolder("Attachments/../Secrets", out _, out _));
+        Assert.False(DailyNoteText.TryNormalizeVaultFolder("C:foo", out _, out _));
+    }
+
+    [Fact]
+    public void Parse_link_style_defaults_to_wikilink()
+    {
+        Assert.Equal(DailyNoteLinkStyle.Wikilink, DailyNoteText.ParseLinkStyle(null));
+        Assert.Equal(DailyNoteLinkStyle.Wikilink, DailyNoteText.ParseLinkStyle(""));
+        Assert.Equal(DailyNoteLinkStyle.Markdown, DailyNoteText.ParseLinkStyle("Markdown"));
+        Assert.Equal(DailyNoteLinkStyle.Embed, DailyNoteText.ParseLinkStyle("Embed"));
+    }
+
+    [Fact]
+    public void No_file_uri_in_link_bodies()
+    {
+        foreach (DailyNoteLinkStyle style in Enum.GetValues(typeof(DailyNoteLinkStyle)))
+        {
+            var body = DailyNoteText.LinkBody("Attachments/Shots/a b.png", style);
+            Assert.DoesNotContain("file:///", body);
+        }
     }
 
     [Fact]

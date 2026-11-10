@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -6,47 +6,123 @@ using Sideclip.Screenshot;
 
 namespace Sideclip.Obsidian;
 
+/// <summary>How a copied screenshot is referenced from the daily note.</summary>
+internal enum DailyNoteLinkStyle
+{
+    /// <summary>Obsidian embed: ![[folder/name.png]]. Used when the copy folder is inside the vault.</summary>
+    Embed = 0,
+    /// <summary>Wikilink: [[folder/name.png]]. Default for link mode (copy folder outside the vault).</summary>
+    Wikilink = 1,
+    /// <summary>Markdown: [shot](folder/name.png) with the target percent-encoded.</summary>
+    Markdown = 2
+}
+
 /// <summary>Builds the Markdown that Sideclip appends to a daily note. Pure string work.</summary>
 internal static class DailyNoteText
 {
+    public const string DefaultVaultFolder = "Attachments/Shots";
+    public const string MarkdownLabel = "shot";
+
     private static readonly char[] WikiBreakers = { '[', ']', '|', '#', '^' };
 
     /// <summary>
-    /// "- 14:05:32 ![[Screens/shot.png]]" when the file is inside the vault,
-    /// "- 14:05:32 [shot.png](file:///D:/Shots/shot.png)" when it is not.
+    /// Builds one timestamped line for a file that already lives inside the vault.
+    /// Never emits a file:/// URI. Callers in link mode must copy into the vault first.
     /// </summary>
-    public static string EntryLine(string vault, string file, DateTime at)
+    public static string EntryLine(string vault, string file, DateTime at, DailyNoteLinkStyle style = DailyNoteLinkStyle.Embed)
     {
         var time = at.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
-        if (ScreenshotRules.IsInside(file, vault))
-        {
-            var rel = Path.GetRelativePath(ScreenshotRules.Normalize(vault), Path.GetFullPath(file)).Replace('\\', '/');
-            // Wikilinks cannot carry these characters; fall back to a Markdown embed.
-            if (rel.IndexOfAny(WikiBreakers) >= 0)
-                return "- " + time + " ![](" + EncodePath(rel) + ")";
-            return "- " + time + " ![[" + rel + "]]";
-        }
+        if (!ScreenshotRules.IsInside(file, vault))
+            throw new ArgumentException("Daily-note entry file must be inside the vault (no file:/// links).", nameof(file));
 
-        var name = Path.GetFileName(file).Replace("[", "\\[").Replace("]", "\\]");
-        return "- " + time + " [" + name + "](" + FileUrl(file) + ")";
+        var rel = Path.GetRelativePath(ScreenshotRules.Normalize(vault), Path.GetFullPath(file)).Replace('\\', '/');
+        return "- " + time + " " + LinkBody(rel, style);
     }
 
-    /// <summary>file:/// URL with spaces and Markdown-breaking characters percent-encoded.</summary>
-    public static string FileUrl(string path)
+    /// <summary>Link / embed body for a vault-relative path using forward slashes.</summary>
+    public static string LinkBody(string vaultRelativePath, DailyNoteLinkStyle style)
     {
-        var full = Path.GetFullPath(path);
-        var sb = new StringBuilder("file:///");
-        var parts = full.Replace('\\', '/').Split('/');
-        for (var i = 0; i < parts.Length; i++)
+        var rel = vaultRelativePath.Replace('\\', '/');
+        return style switch
         {
-            if (i > 0)
-                sb.Append('/');
-            // Keep the drive colon ("D:") readable; encode everything else that is not URL-safe.
-            sb.Append(i == 0 && parts[0].EndsWith(':') ? parts[0] : EncodeSegment(parts[i]));
+            DailyNoteLinkStyle.Markdown => "[" + MarkdownLabel + "](" + EncodePath(rel) + ")",
+            DailyNoteLinkStyle.Wikilink => WikilinkOrMarkdownFallback(rel, embed: false),
+            _ => WikilinkOrMarkdownFallback(rel, embed: true)
+        };
+    }
+
+    private static string WikilinkOrMarkdownFallback(string rel, bool embed)
+    {
+        if (rel.IndexOfAny(WikiBreakers) >= 0)
+            return embed ? "![](" + EncodePath(rel) + ")" : "[" + MarkdownLabel + "](" + EncodePath(rel) + ")";
+        return embed ? "![[" + rel + "]]" : "[[" + rel + "]]";
+    }
+
+    /// <summary>
+    /// Validates and normalizes a vault-relative destination folder.
+    /// Rejects rooted paths, drive letters, and '..' segments. Empty becomes <see cref="DefaultVaultFolder"/>.
+    /// </summary>
+    public static bool TryNormalizeVaultFolder(string? folder, out string normalized, out string reason)
+    {
+        normalized = DefaultVaultFolder;
+        reason = string.Empty;
+        var raw = (folder ?? string.Empty).Trim().Replace('\\', '/');
+        if (raw.Length == 0)
+        {
+            normalized = DefaultVaultFolder;
+            return true;
         }
 
-        return sb.ToString();
+        if (Path.IsPathRooted(raw) || raw.Contains(':') || raw.StartsWith('/') || raw.StartsWith('\\'))
+        {
+            reason = "Use a vault-relative folder (no drive letter or rooted path).";
+            return false;
+        }
+
+        var parts = raw.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0)
+        {
+            normalized = DefaultVaultFolder;
+            return true;
+        }
+
+        foreach (var p in parts)
+        {
+            if (p is "." or "..")
+            {
+                reason = "Folder must stay inside the vault (no '..').";
+                return false;
+            }
+
+            if (p.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            {
+                reason = "Folder has invalid characters.";
+                return false;
+            }
+        }
+
+        normalized = string.Join('/', parts);
+        return true;
     }
+
+    public static DailyNoteLinkStyle ParseLinkStyle(string? value)
+    {
+        if (string.Equals(value, "Markdown", StringComparison.OrdinalIgnoreCase))
+            return DailyNoteLinkStyle.Markdown;
+        if (string.Equals(value, "Wikilink", StringComparison.OrdinalIgnoreCase))
+            return DailyNoteLinkStyle.Wikilink;
+        if (string.Equals(value, "Embed", StringComparison.OrdinalIgnoreCase))
+            return DailyNoteLinkStyle.Embed;
+        // Existing profiles that used outside-vault (link) mode get Wikilink by default.
+        return DailyNoteLinkStyle.Wikilink;
+    }
+
+    public static string LinkStyleName(DailyNoteLinkStyle style) => style switch
+    {
+        DailyNoteLinkStyle.Markdown => "Markdown",
+        DailyNoteLinkStyle.Embed => "Embed",
+        _ => "Wikilink"
+    };
 
     private static string EncodePath(string rel) =>
         string.Join("/", rel.Split('/').Select(EncodeSegment));

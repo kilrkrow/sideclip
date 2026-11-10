@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text.Json;
 using Microsoft.Win32;
 
@@ -37,6 +37,13 @@ internal static class SettingsManager
                 if (s.TtlSeconds > 300) s.TtlSeconds = 300;
                 if (s.TypeOutDelayMs < 0) s.TypeOutDelayMs = 0;
                 if (s.TypeOutDelayMs > 250) s.TypeOutDelayMs = 250;
+                if (!Sideclip.Obsidian.DailyNoteText.TryNormalizeVaultFolder(s.DailyNoteVaultFolder, out var vf, out _))
+                    vf = Sideclip.Obsidian.DailyNoteText.DefaultVaultFolder;
+                s.DailyNoteVaultFolder = vf;
+                var style = Sideclip.Obsidian.DailyNoteText.ParseLinkStyle(s.DailyNoteLinkStyle);
+                if (style == Sideclip.Obsidian.DailyNoteLinkStyle.Embed)
+                    style = Sideclip.Obsidian.DailyNoteLinkStyle.Wikilink;
+                s.DailyNoteLinkStyle = Sideclip.Obsidian.DailyNoteText.LinkStyleName(style);
                 return s;
             }
         }

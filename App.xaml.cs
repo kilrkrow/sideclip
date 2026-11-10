@@ -190,16 +190,61 @@ public partial class App : System.Windows.Application
             }
 
             var vault = (_settings.DailyNoteVault ?? "").Trim();
+            var linkMode = _settings.DailyNoteEnabled && vault.Length > 0 && !ScreenshotRules.IsInside(dest, vault);
+            var style = linkMode
+                ? DailyNoteText.ParseLinkStyle(_settings.DailyNoteLinkStyle)
+                : DailyNoteLinkStyle.Embed;
+            if (style == DailyNoteLinkStyle.Embed && linkMode)
+                style = DailyNoteLinkStyle.Wikilink;
+
+            string? vaultFolderRel = null;
+            if (linkMode)
+            {
+                if (!DailyNoteText.TryNormalizeVaultFolder(_settings.DailyNoteVaultFolder, out vaultFolderRel, out var folderReason))
+                {
+                    _issues.Report(DailyNoteService.KindFailed, "Daily note vault folder is invalid: " + folderReason);
+                    return;
+                }
+            }
+
             if (_settings.DailyNoteEnabled && vault.Length > 0)
             {
                 DailyNoteService.Recognizer? ocr = _settings.DailyNoteOcr && WindowsOcr.IsAvailable ? WindowsOcr.RecognizeAsync : null;
-                _dailyNotes = new DailyNoteService(vault, _issues, ocr, TimeSpan.FromSeconds(15), _settings.DailyNoteHeading);
+                _dailyNotes = new DailyNoteService(vault, _issues, ocr, TimeSpan.FromSeconds(15), _settings.DailyNoteHeading, style);
             }
 
             var copier = new ScreenshotCopier(source, dest, _issues);
             var notes = _dailyNotes;
+            var vaultRoot = vault;
+            var vaultRel = vaultFolderRel;
             if (notes is not null)
-                copier.Copied += (_, copy) => notes.Enqueue(copy, DateTime.Now);
+            {
+                copier.Copied += (_, copy) =>
+                {
+                    var noteFile = copy;
+                    if (vaultRel is not null)
+                    {
+                        var vaultDest = Path.Combine(vaultRoot, vaultRel.Replace('/', Path.DirectorySeparatorChar));
+                        try
+                        {
+                            Directory.CreateDirectory(vaultDest);
+                            var outcome = FileCopier.CopyWhenReady(copy, vaultDest, TimeSpan.FromSeconds(30), CancellationToken.None, out var vaultCopy, out var err);
+                            if (outcome != CopyOutcome.Copied || string.IsNullOrEmpty(vaultCopy))
+                            {
+                                _issues?.Report(DailyNoteService.KindFailed, "Daily note vault copy failed: " + (err ?? outcome.ToString()));
+                                return;
+                            }
+                            noteFile = vaultCopy;
+                        }
+                        catch (Exception ex)
+                        {
+                            _issues?.Report(DailyNoteService.KindFailed, "Daily note vault copy failed: " + ex.Message);
+                            return;
+                        }
+                    }
+                    notes.Enqueue(noteFile, DateTime.Now);
+                };
+            }
             _copier = copier;
             copier.Start();
         }
@@ -226,6 +271,13 @@ public partial class App : System.Windows.Application
         next.DailyNoteVault = edited.DailyNoteVault ?? "";
         next.DailyNoteHeading = edited.DailyNoteHeading ?? "";
         next.DailyNoteOcr = edited.DailyNoteOcr;
+        if (!DailyNoteText.TryNormalizeVaultFolder(edited.DailyNoteVaultFolder, out var vaultFolder, out _))
+            vaultFolder = DailyNoteText.DefaultVaultFolder;
+        next.DailyNoteVaultFolder = vaultFolder;
+        var linkStyle = DailyNoteText.ParseLinkStyle(edited.DailyNoteLinkStyle);
+        if (linkStyle == DailyNoteLinkStyle.Embed)
+            linkStyle = DailyNoteLinkStyle.Wikilink;
+        next.DailyNoteLinkStyle = DailyNoteText.LinkStyleName(linkStyle);
         if (_hotkeys is null || !_hotkeys.TryApply(next.PickerHotkey, next.ScreenshotHotkey, next.TypeOutGoHotkey, next.TypeOutEnabled))
         { NotifyPickerConfiguration(); return _hotkeys?.LastError ?? "Shortcut registration is unavailable."; }
         try { SettingsManager.Save(next); }

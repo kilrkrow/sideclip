@@ -23,6 +23,15 @@ internal sealed class AppSettings
     /// <summary>Also put Windows OCR text in a collapsed callout under each embed. Only active with the daily note.</summary>
     public bool DailyNoteOcr { get; set; }
 
+    /// <summary>
+    /// Vault-relative folder for link-mode copies (default Attachments/Shots).
+    /// Embed mode reuses <see cref="ScreenshotCopyFolder"/> when that folder is inside the vault; this field is only used in link mode.
+    /// </summary>
+    public string DailyNoteVaultFolder { get; set; } = "Attachments/Shots";
+
+    /// <summary>Link-mode style: "Wikilink" (default) or "Markdown". Embed mode ignores this and writes ![[...]].</summary>
+    public string DailyNoteLinkStyle { get; set; } = "Wikilink";
+
     public bool TypeOutEnabled { get; set; }
     public int TypeOutDelayMs { get; set; } = 12;
     public string TypeOutGoHotkey { get; set; } = "Ctrl+Win+Shift+T";
@@ -40,6 +49,8 @@ internal sealed class AppSettings
         DailyNoteVault = other.DailyNoteVault;
         DailyNoteHeading = other.DailyNoteHeading;
         DailyNoteOcr = other.DailyNoteOcr;
+        DailyNoteVaultFolder = other.DailyNoteVaultFolder;
+        DailyNoteLinkStyle = other.DailyNoteLinkStyle;
         TypeOutGoHotkey = other.TypeOutGoHotkey; TypeOutEnabled = other.TypeOutEnabled;
         TypeOutDelayMs = other.TypeOutDelayMs;
     }
