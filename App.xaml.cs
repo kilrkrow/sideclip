@@ -8,6 +8,7 @@ using Sideclip.History;
 using Sideclip.Hotkeys;
 using Sideclip.Native;
 using Sideclip.Picker;
+using Sideclip.Obsidian;
 using Sideclip.Screenshot;
 using Sideclip.Settings;
 using Sideclip.Tray;
@@ -32,6 +33,9 @@ public partial class App : System.Windows.Application
     private SettingsWindowHost? _settingsWindows;
     private TaskCompletionSource<PickResult>? _pickWaiter;
     private readonly List<string> _pickPngPaths = new();
+    private IssueNotifier? _issues;
+    private ScreenshotCopier? _copier;
+    private DailyNoteService? _dailyNotes;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -120,6 +124,13 @@ public partial class App : System.Windows.Application
 
         _ipc = new IpcServer(Dispatcher, OpenPicker, PickFromCli);
         _ipc.Start();
+
+        _issues = new IssueNotifier(msg => Dispatcher.BeginInvoke(() => _tray?.Hint("Sideclip", msg)));
+        ApplyScreenshotFeatures();
+
+        // Test hook for UI checks: open Settings right away instead of via the tray menu.
+        if (Environment.GetEnvironmentVariable("SIDECLIP_OPEN_SETTINGS") == "1")
+            Dispatcher.BeginInvoke(() => OpenSettings(openInactive: true), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 #if DEBUG
         _debug = new MainWindow(_watcher, _history);
         ApplyDebugVisibility();
@@ -139,19 +150,110 @@ public partial class App : System.Windows.Application
         ApplyDebugVisibility();
         if (!_typeOut!.HasEntry && !string.IsNullOrWhiteSpace(_hotkeys?.LastError))
             _tray?.Hint("Sideclip", _hotkeys.LastError.Trim());
+        ApplyScreenshotFeatures();
     }
 
-    private void OpenSettings()
+    private void OpenSettings() => OpenSettings(openInactive: false);
+
+    private void OpenSettings(bool openInactive)
     {
         _settingsWindows ??= new SettingsWindowHost(
-            () => new SettingsForm(_settings, TrySaveSettings),
+            () => new SettingsForm(_settings, TrySaveSettings, ScreenshotFolder.Resolve(), ObsidianVaults.Load(), WindowsOcr.IsAvailable, openInactive),
             () => _typeOut?.Cancel(_typeOut.HasEntry ? TypeOutSession.HotkeysChangedMessage : null));
+        if (openInactive && _settingsWindows.Current is { IsDisposed: false })
+            _settingsWindows.Current.Close();
         _settingsWindows.Open();
         // A maximized topmost picker otherwise covers the native Settings form.
         // This is transient: demote Settings again when that picker closes.
         if (_settingsWindows.Current is { } settingsWindow)
             settingsWindow.TopMost = _picker?.IsVisible == true;
     }
+
+    /// <summary>(Re)starts the screenshot copier and daily-note writer from the current settings.</summary>
+    private void ApplyScreenshotFeatures()
+    {
+        try
+        {
+            _copier?.Dispose();
+            _copier = null;
+            _dailyNotes?.Dispose();
+            _dailyNotes = null;
+            if (_issues is null || !_settings.ScreenshotCopyEnabled)
+                return;
+
+            var source = ScreenshotFolder.Resolve();
+            var dest = (_settings.ScreenshotCopyFolder ?? "").Trim();
+            if (!ScreenshotRules.IsCopyFolderValid(dest, source, out var reason))
+            {
+                _issues.Report(ScreenshotCopier.KindDestination, "Screenshot copy is off until the folder is fixed: " + reason);
+                return;
+            }
+
+            var vault = (_settings.DailyNoteVault ?? "").Trim();
+            var linkMode = _settings.DailyNoteEnabled && vault.Length > 0 && !ScreenshotRules.IsInside(dest, vault);
+            var style = linkMode
+                ? DailyNoteText.ParseLinkStyle(_settings.DailyNoteLinkStyle)
+                : DailyNoteLinkStyle.Embed;
+            if (style == DailyNoteLinkStyle.Embed && linkMode)
+                style = DailyNoteLinkStyle.Wikilink;
+
+            string? vaultFolderRel = null;
+            if (linkMode)
+            {
+                if (!DailyNoteText.TryNormalizeVaultFolder(_settings.DailyNoteVaultFolder, out vaultFolderRel, out var folderReason))
+                {
+                    _issues.Report(DailyNoteService.KindFailed, "Daily note vault folder is invalid: " + folderReason);
+                    return;
+                }
+            }
+
+            if (_settings.DailyNoteEnabled && vault.Length > 0)
+            {
+                DailyNoteService.Recognizer? ocr = _settings.DailyNoteOcr && WindowsOcr.IsAvailable ? WindowsOcr.RecognizeAsync : null;
+                _dailyNotes = new DailyNoteService(vault, _issues, ocr, TimeSpan.FromSeconds(15), _settings.DailyNoteHeading, style);
+            }
+
+            var copier = new ScreenshotCopier(source, dest, _issues);
+            var notes = _dailyNotes;
+            var vaultRoot = vault;
+            var vaultRel = vaultFolderRel;
+            if (notes is not null)
+            {
+                copier.Copied += (_, copy) =>
+                {
+                    var noteFile = copy;
+                    if (vaultRel is not null)
+                    {
+                        var vaultDest = Path.Combine(vaultRoot, vaultRel.Replace('/', Path.DirectorySeparatorChar));
+                        try
+                        {
+                            Directory.CreateDirectory(vaultDest);
+                            var outcome = FileCopier.CopyWhenReady(copy, vaultDest, TimeSpan.FromSeconds(30), CancellationToken.None, out var vaultCopy, out var err);
+                            if (outcome != CopyOutcome.Copied || string.IsNullOrEmpty(vaultCopy))
+                            {
+                                _issues?.Report(DailyNoteService.KindFailed, "Daily note vault copy failed: " + (err ?? outcome.ToString()));
+                                return;
+                            }
+                            noteFile = vaultCopy;
+                        }
+                        catch (Exception ex)
+                        {
+                            _issues?.Report(DailyNoteService.KindFailed, "Daily note vault copy failed: " + ex.Message);
+                            return;
+                        }
+                    }
+                    notes.Enqueue(noteFile, DateTime.Now);
+                };
+            }
+            _copier = copier;
+            copier.Start();
+        }
+        catch (Exception ex)
+        {
+            _issues?.Report("screenshot-setup", "Screenshot copy could not start: " + ex.Message);
+        }
+    }
+
 
     private string? TrySaveSettings(AppSettings edited)
     {
@@ -163,6 +265,19 @@ public partial class App : System.Windows.Application
         next.TypeOutGoHotkey = edited.TypeOutGoHotkey;
         next.TypeOutEnabled = edited.TypeOutEnabled;
         next.TypeOutDelayMs = Math.Clamp(edited.TypeOutDelayMs, 0, 250);
+        next.ScreenshotCopyEnabled = edited.ScreenshotCopyEnabled;
+        next.ScreenshotCopyFolder = edited.ScreenshotCopyFolder ?? "";
+        next.DailyNoteEnabled = edited.DailyNoteEnabled;
+        next.DailyNoteVault = edited.DailyNoteVault ?? "";
+        next.DailyNoteHeading = edited.DailyNoteHeading ?? "";
+        next.DailyNoteOcr = edited.DailyNoteOcr;
+        if (!DailyNoteText.TryNormalizeVaultFolder(edited.DailyNoteVaultFolder, out var vaultFolder, out _))
+            vaultFolder = DailyNoteText.DefaultVaultFolder;
+        next.DailyNoteVaultFolder = vaultFolder;
+        var linkStyle = DailyNoteText.ParseLinkStyle(edited.DailyNoteLinkStyle);
+        if (linkStyle == DailyNoteLinkStyle.Embed)
+            linkStyle = DailyNoteLinkStyle.Wikilink;
+        next.DailyNoteLinkStyle = DailyNoteText.LinkStyleName(linkStyle);
         if (_hotkeys is null || !_hotkeys.TryApply(next.PickerHotkey, next.ScreenshotHotkey, next.TypeOutGoHotkey, next.TypeOutEnabled))
         { NotifyPickerConfiguration(); return _hotkeys?.LastError ?? "Shortcut registration is unavailable."; }
         try { SettingsManager.Save(next); }
@@ -176,6 +291,7 @@ public partial class App : System.Windows.Application
         _typeOut?.SetEnabled(next.TypeOutEnabled);
         _tray?.RefreshHotkeyLabel();
         NotifyPickerConfiguration();
+        ApplyScreenshotFeatures();
         return null;
     }
 
@@ -325,6 +441,8 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         _typeOut?.Dispose();
+        _copier?.Dispose();
+        _dailyNotes?.Dispose();
         _settingsWindows?.Dispose();
         _picker?.Close();
         _ipc?.Dispose();

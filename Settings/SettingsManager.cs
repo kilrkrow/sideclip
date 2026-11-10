@@ -12,11 +12,7 @@ internal static class SettingsManager
         PropertyNameCaseInsensitive = true
     };
 
-    // Set SIDECLIP_DATA_DIR in tests to redirect all data files to a temp directory.
-    public static string Dir =>
-        Environment.GetEnvironmentVariable("SIDECLIP_DATA_DIR") is { Length: > 0 } ov
-            ? ov
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Sideclip");
+    public static string Dir => AppProfile.DataDir;
 
     public static string SettingsPath => Path.Combine(Dir, "settings.json");
     public static string HistoryPath => Path.Combine(Dir, "history.json");
@@ -41,6 +37,13 @@ internal static class SettingsManager
                 if (s.TtlSeconds > 300) s.TtlSeconds = 300;
                 if (s.TypeOutDelayMs < 0) s.TypeOutDelayMs = 0;
                 if (s.TypeOutDelayMs > 250) s.TypeOutDelayMs = 250;
+                if (!Sideclip.Obsidian.DailyNoteText.TryNormalizeVaultFolder(s.DailyNoteVaultFolder, out var vf, out _))
+                    vf = Sideclip.Obsidian.DailyNoteText.DefaultVaultFolder;
+                s.DailyNoteVaultFolder = vf;
+                var style = Sideclip.Obsidian.DailyNoteText.ParseLinkStyle(s.DailyNoteLinkStyle);
+                if (style == Sideclip.Obsidian.DailyNoteLinkStyle.Embed)
+                    style = Sideclip.Obsidian.DailyNoteLinkStyle.Wikilink;
+                s.DailyNoteLinkStyle = Sideclip.Obsidian.DailyNoteText.LinkStyleName(style);
                 return s;
             }
         }
@@ -68,6 +71,10 @@ internal static class SettingsManager
     public static void ApplyAutostart(bool enabled)
     {
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SIDECLIP_DATA_DIR"))) return;
+        // An isolated profile (SIDECLIP_DATA_DIR) must never rewrite the real autostart entry.
+        if (AppProfile.IsIsolated)
+            return;
+
         const string keyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         try
         {

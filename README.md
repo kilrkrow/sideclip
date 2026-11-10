@@ -7,13 +7,14 @@ Windows tray clipboard that sits beside Win+V. It never steals Win+V.
 - Screenshot path: `Ctrl+Shift+Win+P` types the newest file in `Pictures\Screenshots`.
 - CLI: `sideclip --shots [n]`, `sideclip --newest` (no tray needed), `sideclip --picker`, `sideclip --pick` (tray must be running).
 - Agent skill (Grok, Codex, Claude Code): opens the picker (`--pick`) and inserts the chosen clip. Screenshot paths fall back to a dated text list of the last 3 files (no image ingest).
-- Release is tray-only. Hotkeys and type-out options live under tray **Settings...**.
+- Release is tray-only. Hotkeys, type-out, and screenshot copy/daily-note options live under tray **Settings...**.
+- Optional: copy new screenshots to a folder and append them to today's Obsidian daily note (off by default). Link mode always copies into the vault (never `file:///`); see below.
 
 ## Install
 
 ### Prerequisite
 
-Sideclip targets `net8.0-windows` and ships as a framework-dependent win-x64 build. Install the **.NET 8 Desktop Runtime (x64)** before running `Sideclip.exe`:
+Sideclip targets `net8.0-windows10.0.19041.0` (Windows 10 1809+ / Server 2019+; OCR needs a Windows OCR language pack) and ships as a framework-dependent win-x64 build. Install the **.NET 8 Desktop Runtime (x64)** before running `Sideclip.exe`:
 
 https://dotnet.microsoft.com/download/dotnet/8.0
 
@@ -52,6 +53,21 @@ Output: `bin\Release\net8.0-windows\win-x64\publish\Sideclip.exe`
 - Tray icon for history, **Settings...**, TTL, About, and Exit.
 - Hotkeys are configurable from **Settings...**. Defaults never bind `Win+V`, `Ctrl+Win+V`, or `Ctrl+Win+P`.
 
+
+## Screenshots and daily note
+
+Tray **Settings...** > **Screenshots** (all off by default):
+
+1. **Also copy new screenshots to a folder** -- watches the Windows Screenshots known folder and copies each new image once (never moves the original; collisions get ` (1)`, ` (2)`, ...).
+2. **Add to Obsidian daily note** -- appends one timestamped line per copied shot to today's note (optional heading, optional OCR callout).
+
+**Embed mode** (copy folder inside the vault): the note gets `![[relative/path.png]]` from that folder. No separate vault-folder setting; the copy folder is reused.
+
+**Link mode** (copy folder outside the vault): Sideclip also copies into a vault-relative folder (default `Attachments/Shots`, created if missing) and writes either:
+- **Wikilink** (default): `[[Attachments/Shots/name.png]]`
+- **Markdown**: `[shot](Attachments/Shots/name.png)` with spaces and other URL-unsafe characters percent-encoded
+
+The vault folder must be relative (no drive letter, no rooted path, no `..`). Link mode never writes a `file:///` URI. Existing profiles that already used an outside copy folder stay in link mode and get Wikilink + `Attachments/Shots` defaults.
 ## Type-out (clipboard-free text)
 
 Opt in from tray **Settings...**: enable **Enable clipboard-free text type-out**, optionally set the text-only shortcut (default `Ctrl+Win+Shift+T`), and set bounded delay between chunks (0-250 ms; disabled when type-out is off). Apply saves; Close without Apply leaves prior applied values.
@@ -141,3 +157,4 @@ See [pack/chocolatey/README.md](pack/chocolatey/README.md). Package id `sideclip
 ## License
 
 [MIT](LICENSE)
+

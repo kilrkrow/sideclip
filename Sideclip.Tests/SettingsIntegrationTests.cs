@@ -2,6 +2,8 @@ using System.IO;
 using System.Windows.Forms;
 using Sideclip.Hotkeys;
 using Sideclip.Settings;
+using Sideclip.Screenshot;
+using Sideclip.Obsidian;
 
 namespace Sideclip.Tests;
 
@@ -91,7 +93,7 @@ public sealed class SettingsIntegrationTests
         Sta(() =>
         {
             var original = new AppSettings { TypeOutEnabled = false }; AppSettings? applied = null;
-            using var form = new SettingsForm(original, next => { applied = next.Copy(); return null; });
+            using var form = new SettingsForm(original, next => { applied = next.Copy(); return null; }, Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), Array.Empty<ObsidianVault>(), false);
             Assert.Contains("0.3.0", form.Text); Assert.NotNull(form.Icon);
             var enabled = Control<CheckBox>(form, "TypeOutEnabled");
             var delay = Control<NumericUpDown>(form, "TypeOutDelayMs");
@@ -128,7 +130,7 @@ public sealed class SettingsIntegrationTests
                 TypeOutGoHotkey = "Ctrl+Alt+Shift+F9",
                 TypeOutDelayMs = 80
             };
-            using var form = new SettingsForm(original, _ => null);
+            using var form = new SettingsForm(original, _ => null, Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), Array.Empty<ObsidianVault>(), false);
             var enabled = Control<CheckBox>(form, "TypeOutEnabled");
             var delay = Control<NumericUpDown>(form, "TypeOutDelayMs");
             var typeOut = Control<TextBox>(form, "TypeOutGoHotkey");
@@ -191,7 +193,7 @@ public sealed class SettingsIntegrationTests
         Sta(() =>
         {
             var original = new AppSettings(); var attempts = 0;
-            using var form = new SettingsForm(original, next => { attempts++; return "External collision. Previous assignments kept."; });
+            using var form = new SettingsForm(original, next => { attempts++; return "External collision. Previous assignments kept."; }, Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), Array.Empty<ObsidianVault>(), false);
             Control<TextBox>(form, "TypeOutGoHotkey").Text = "Win+V";
             Assert.False(form.ApplyChanges()); Assert.Equal(0, attempts); Assert.False(form.IsDisposed);
             Assert.Contains("reserved", Control<Label>(form, "SettingsError").Text);
@@ -208,7 +210,7 @@ public sealed class SettingsIntegrationTests
         Sta(() =>
         {
             var created = 0; var cancelled = 0;
-            using var host = new SettingsWindowHost(() => { created++; return new SettingsForm(new AppSettings(), _ => null); }, () => cancelled++, _ => { });
+            using var host = new SettingsWindowHost(() => { created++; return new SettingsForm(new AppSettings(), _ => null, Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), Array.Empty<ObsidianVault>(), false); }, () => cancelled++, _ => { });
             host.Open(); var first = host.Current; host.Open(); Assert.Same(first, host.Current); Assert.Equal(1, created); Assert.Equal(2, cancelled);
             first!.Dispose(); Assert.Null(host.Current);
             host.Open(); Assert.NotSame(first, host.Current); Assert.Equal(2, created); Assert.Equal(3, cancelled);

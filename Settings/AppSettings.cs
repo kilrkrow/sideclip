@@ -1,4 +1,4 @@
-namespace Sideclip.Settings;
+﻿namespace Sideclip.Settings;
 
 internal sealed class AppSettings
 {
@@ -8,9 +8,34 @@ internal sealed class AppSettings
     public bool ShowDebugWindow { get; set; }
     public string PickerHotkey { get; set; } = "Ctrl+Shift+Win+V";
     public string ScreenshotHotkey { get; set; } = "Ctrl+Shift+Win+P";
+
+    /// <summary>Also copy every new file in the Screenshots folder to <see cref="ScreenshotCopyFolder"/>.</summary>
+    public bool ScreenshotCopyEnabled { get; set; }
+    public string ScreenshotCopyFolder { get; set; } = "";
+
+    /// <summary>Add each copied screenshot to today's Obsidian daily note. Only active while the copy is on.</summary>
+    public bool DailyNoteEnabled { get; set; }
+    public string DailyNoteVault { get; set; } = "";
+
+    /// <summary>Optional ATX heading (e.g. "## Sideclip Clips"). Clips go at the end of its section; blank = end of note.</summary>
+    public string DailyNoteHeading { get; set; } = "";
+
+    /// <summary>Also put Windows OCR text in a collapsed callout under each embed. Only active with the daily note.</summary>
+    public bool DailyNoteOcr { get; set; }
+
+    /// <summary>
+    /// Vault-relative folder for link-mode copies (default Attachments/Shots).
+    /// Embed mode reuses <see cref="ScreenshotCopyFolder"/> when that folder is inside the vault; this field is only used in link mode.
+    /// </summary>
+    public string DailyNoteVaultFolder { get; set; } = "Attachments/Shots";
+
+    /// <summary>Link-mode style: "Wikilink" (default) or "Markdown". Embed mode ignores this and writes ![[...]].</summary>
+    public string DailyNoteLinkStyle { get; set; } = "Wikilink";
+
     public bool TypeOutEnabled { get; set; }
     public int TypeOutDelayMs { get; set; } = 12;
     public string TypeOutGoHotkey { get; set; } = "Ctrl+Win+Shift+T";
+
     public AppSettings Copy() => (AppSettings)MemberwiseClone();
 
     public void CopyFrom(AppSettings other)
@@ -18,6 +43,14 @@ internal sealed class AppSettings
         TtlSeconds = other.TtlSeconds; TtlEnabled = other.TtlEnabled;
         Autostart = other.Autostart; ShowDebugWindow = other.ShowDebugWindow;
         PickerHotkey = other.PickerHotkey; ScreenshotHotkey = other.ScreenshotHotkey;
+        ScreenshotCopyEnabled = other.ScreenshotCopyEnabled;
+        ScreenshotCopyFolder = other.ScreenshotCopyFolder;
+        DailyNoteEnabled = other.DailyNoteEnabled;
+        DailyNoteVault = other.DailyNoteVault;
+        DailyNoteHeading = other.DailyNoteHeading;
+        DailyNoteOcr = other.DailyNoteOcr;
+        DailyNoteVaultFolder = other.DailyNoteVaultFolder;
+        DailyNoteLinkStyle = other.DailyNoteLinkStyle;
         TypeOutGoHotkey = other.TypeOutGoHotkey; TypeOutEnabled = other.TypeOutEnabled;
         TypeOutDelayMs = other.TypeOutDelayMs;
     }

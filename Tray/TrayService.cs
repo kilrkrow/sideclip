@@ -1,4 +1,4 @@
-using System.Drawing;
+﻿using System.Drawing;
 using System.Reflection;
 using System.Windows.Forms;
 using Sideclip.Settings;
@@ -100,17 +100,7 @@ internal sealed class TrayService : IDisposable
     private string TtlLabel() => _settings.TtlEnabled ? "Secret TTL: " + _settings.TtlSeconds + "s" : "Secret TTL: Off";
     private string OpenLabel() => string.IsNullOrWhiteSpace(_settings.PickerHotkey) ? "Open clipboard" : "Open clipboard (" + _settings.PickerHotkey + ")";
 
-    private static string DisplayVersion()
-    {
-        var info = Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        if (!string.IsNullOrWhiteSpace(info))
-        {
-            var plus = info.IndexOf('+');
-            return plus > 0 ? info[..plus] : info;
-        }
-        var version = Assembly.GetExecutingAssembly().GetName().Version;
-        return version is null ? "0.1.0" : $"{version.Major}.{version.Minor}.{version.Build}";
-    }
+    private static string DisplayVersion() => AppVersion.Display();
 
     private static string TrayTip()
     {
@@ -145,3 +135,4 @@ internal sealed class TrayService : IDisposable
         _icon.Dispose();
     }
 }
+
