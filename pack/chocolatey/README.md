@@ -2,7 +2,7 @@
 
 Installs Sideclip from the official GitHub Release ZIP, shims `sideclip` onto PATH, and copies the Grok/Codex skill to `%USERPROFILE%\.agents\skills\sideclip`.
 
-v0.2.0 checksums are filled in `sideclip/tools/chocolateyinstall.ps1` and `sideclip/tools/VERIFICATION.txt` after `.\scripts\publish-release.ps1 -Version 0.2.0`:
+v0.2.0 checksums are filled in `sideclip/tools/chocolateyinstall.ps1` after `.\scripts\publish-release.ps1 -Version 0.2.0`:
 
 - URL: https://github.com/kilrkrow/sideclip/releases/download/v0.2.0/Sideclip-win-x64-v0.2.0.zip
 - SHA256: `868E73FAE7705F3406E6D6D7B5B7D5CEDB5B9A7BA120FB7C84E44F9D856E832C`
@@ -56,5 +56,4 @@ gh release upload v0.2.0 sideclip.0.2.0.nupkg
 3. Publish GitHub release `vX.Y.Z` with `Sideclip-win-x64-vX.Y.Z.zip` (`.\scripts\publish-release.ps1 -Version X.Y.Z`).
 4. Update `sideclip.nuspec` version.
 5. Update `$version` and SHA256 in `tools/chocolateyinstall.ps1`.
-6. Update `tools/VERIFICATION.txt`.
-7. `.\scripts\pack-chocolatey.ps1` and push.
+6. `.\scripts\pack-chocolatey.ps1` and push.
