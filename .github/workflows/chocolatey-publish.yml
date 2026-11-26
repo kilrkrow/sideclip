@@ -1,0 +1,60 @@
+# Packs the Chocolatey package from a branch or tag you pick and, if you
+# tick "push", pushes it to the Chocolatey community feed.
+# Run it from Actions > Chocolatey publish > Run workflow.
+# Needs the repo secret CHOCOLATEY_API_KEY only when pushing.
+name: Chocolatey publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or tag to pack (the version comes from its nuspec)
+        required: true
+        default: choco/0.2.0-resubmit
+      push:
+        description: Push to the Chocolatey community feed (leave off to pack and check only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Sync skill and pack
+        shell: pwsh
+        run: ./scripts/pack-chocolatey.ps1
+
+      - name: Check package contents
+        shell: pwsh
+        run: |
+          $nupkg = Get-ChildItem pack/chocolatey/sideclip/*.nupkg | Select-Object -First 1
+          if (-not $nupkg) { throw 'No .nupkg was produced' }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead($nupkg.FullName)
+          try { $names = @($zip.Entries | ForEach-Object { $_.FullName }) } finally { $zip.Dispose() }
+          $names | ForEach-Object { Write-Host $_ }
+          $bad = $names | Where-Object { $_ -match '(?i)^tools/(VERIFICATION|LICENSE)\.txt$' }
+          if ($bad) { throw "Package still contains: $($bad -join ', ')" }
+          Write-Host "Packed $($nupkg.Name)"
+          "NUPKG=$($nupkg.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chocolatey-nupkg
+          path: pack/chocolatey/sideclip/*.nupkg
+
+      - name: Push to Chocolatey
+        if: ${{ inputs.push }}
+        shell: pwsh
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+        run: |
+          if (-not $env:CHOCO_API_KEY) { throw 'Repo secret CHOCOLATEY_API_KEY is not set' }
+          choco push $env:NUPKG --source https://push.chocolatey.org/ --api-key $env:CHOCO_API_KEY
